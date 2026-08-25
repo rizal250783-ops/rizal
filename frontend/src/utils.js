@@ -89,43 +89,108 @@ Terima kasih.`;
   return `https://wa.me/${ownerNumber}?text=${encodeURIComponent(pesan)}`;
 }
 
-// Generate & download an .ics calendar file for a due date
-export function downloadICS({ nama, lokasi, kamar, jumlah, tanggal, ownerEmail }) {
-  const dt = tanggal ? new Date(tanggal) : new Date();
-  const pad = (x) => String(x).padStart(2, "0");
-  const dateStr = `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}`;
+const _pad = (x) => String(x).padStart(2, "0");
+
+// Escape special chars per RFC 5545 for text values
+function _icsEscape(text) {
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
+// Build a single VEVENT block for a rent due date.
+// Timed event 09:00 (floating local time = HP owner timezone), recurring MONTHLY,
+// with two alarms: H-1 (09:00 hari sebelumnya) & tepat di hari jatuh tempo.
+function _buildVevent({ nama, lokasi, kamar, jumlah, tanggal, index = 0 }) {
+  const dt = tanggal ? new Date(`${String(tanggal).slice(0, 10)}T09:00:00`) : new Date();
+  if (isNaN(dt.getTime())) return "";
+  const y = dt.getFullYear();
+  const m = _pad(dt.getMonth() + 1);
+  const d = _pad(dt.getDate());
+  const dtStart = `${y}${m}${d}T090000`;
+  const dtEnd = `${y}${m}${d}T093000`;
   const stamp = new Date();
-  const dtstamp = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}T${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`;
-  const uid = `rosadah-${Date.now()}@rosadahkost`;
-  const desc = `Penghuni: ${nama}\\nLokasi: ${lokasi}\\nKamar: ${kamar}\\nSewa: Rp${Number(jumlah || 0).toLocaleString("id-ID")}`;
-  const ics = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//ROSADAH KOST//ID",
-    "CALSCALE:GREGORIAN",
+  const dtstamp = `${stamp.getUTCFullYear()}${_pad(stamp.getUTCMonth() + 1)}${_pad(stamp.getUTCDate())}T${_pad(stamp.getUTCHours())}${_pad(stamp.getUTCMinutes())}${_pad(stamp.getUTCSeconds())}Z`;
+  const uid = `rosadah-${y}${m}${d}-${index}-${Math.random().toString(36).slice(2, 8)}@rosadahkost`;
+  const desc = `Penghuni: ${nama}\\nLokasi: ${lokasi || "-"}\\nKamar: ${kamar || "-"}\\nSewa: Rp${Number(jumlah || 0).toLocaleString("id-ID")}\\n\\nPengingat pembayaran sewa kost ROSADAH KOST.`;
+  return [
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${dtstamp}`,
-    `DTSTART;VALUE=DATE:${dateStr}`,
-    `SUMMARY:Jatuh Tempo Pembayaran Kost - ${nama}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    "RRULE:FREQ=MONTHLY",
+    `SUMMARY:${_icsEscape(`Jatuh Tempo Sewa - ${nama} (Kamar ${kamar || "-"})`)}`,
     `DESCRIPTION:${desc}`,
-    ownerEmail ? `ORGANIZER;CN=ROSADAH KOST:mailto:${ownerEmail}` : "",
+    `LOCATION:${_icsEscape(lokasi || "")}`,
     "BEGIN:VALARM",
     "TRIGGER:-P1D",
     "ACTION:DISPLAY",
-    `DESCRIPTION:Pengingat jatuh tempo pembayaran kost - ${nama}`,
+    `DESCRIPTION:${_icsEscape(`Besok jatuh tempo sewa - ${nama}`)}`,
+    "END:VALARM",
+    "BEGIN:VALARM",
+    "TRIGGER:PT0S",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:${_icsEscape(`Hari ini jatuh tempo sewa - ${nama}`)}`,
     "END:VALARM",
     "END:VEVENT",
-    "END:VCALENDAR",
-  ].filter(Boolean).join("\r\n");
+  ].join("\r\n");
+}
 
+function _downloadIcsFile(veventBlocks, filename) {
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//ROSADAH KOST//Manajemen Kost//ID",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...veventBlocks,
+    "END:VCALENDAR",
+  ].join("\r\n");
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `jatuh-tempo-${nama.replace(/\s+/g, "-").toLowerCase()}.ics`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Generate & download an .ics calendar file for ONE tenant's due date (monthly recurring).
+export function downloadICS({ nama, lokasi, kamar, jumlah, tanggal }) {
+  const vevent = _buildVevent({ nama, lokasi, kamar, jumlah, tanggal, index: 0 });
+  if (!vevent) return false;
+  const safe = String(nama || "penghuni").replace(/\s+/g, "-").toLowerCase();
+  _downloadIcsFile([vevent], `jatuh-tempo-${safe}.ics`);
+  return true;
+}
+
+// Generate & download ONE .ics containing due-date reminders for ALL tenants.
+// `items` = array of { nama, lokasi, nomor_kamar, harga_sewa, tanggal_jatuh_tempo }
+// Returns the number of events written (0 if none have a valid due date).
+export function downloadAllICS(items) {
+  const list = Array.isArray(items) ? items : [];
+  const blocks = [];
+  list.forEach((it, i) => {
+    const tanggal = it.tanggal_jatuh_tempo || it.tanggal;
+    if (!tanggal) return;
+    const vevent = _buildVevent({
+      nama: it.nama,
+      lokasi: it.lokasi,
+      kamar: it.nomor_kamar || it.kamar,
+      jumlah: it.harga_sewa != null ? it.harga_sewa : it.jumlah,
+      tanggal,
+      index: i,
+    });
+    if (vevent) blocks.push(vevent);
+  });
+  if (blocks.length === 0) return 0;
+  const stamp = new Date();
+  const fname = `jatuh-tempo-kost-${stamp.getFullYear()}${_pad(stamp.getMonth() + 1)}${_pad(stamp.getDate())}.ics`;
+  _downloadIcsFile(blocks, fname);
+  return blocks.length;
 }

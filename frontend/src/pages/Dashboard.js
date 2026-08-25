@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, BedDouble, DoorOpen, AlertTriangle, UserX, PieChart, TrendingUp, Mail } from "lucide-react";
+import { Wallet, BedDouble, DoorOpen, AlertTriangle, UserX, PieChart, TrendingUp, Mail, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import api from "../api";
-import { formatRupiah, formatBulan } from "../utils";
+import { formatRupiah, formatBulan, downloadAllICS } from "../utils";
 
 function StatCard({ icon: Icon, label, value, sub, tint, testid }) {
   return (
@@ -35,13 +35,43 @@ export default function Dashboard() {
     }
   };
 
+  const exportCalendar = async () => {
+    const tid = toast.loading("Menyiapkan file kalender...");
+    try {
+      const res = await api.get("/tenants");
+      const tenants = (res.data || []).filter((t) => t.tanggal_jatuh_tempo);
+      if (tenants.length === 0) {
+        toast.error("Belum ada penghuni dengan tanggal jatuh tempo.", { id: tid });
+        return;
+      }
+      const count = downloadAllICS(tenants);
+      if (count > 0) {
+        toast.success(`File kalender ${count} penghuni diunduh. Buka file-nya di HP lalu simpan ke Google Calendar.`, { id: tid, duration: 6000 });
+      } else {
+        toast.error("Tidak ada jatuh tempo yang bisa diekspor.", { id: tid });
+      }
+    } catch (e) {
+      toast.error("Gagal membuat file kalender", { id: tid });
+    }
+  };
+
   if (!data) return <div className="page-container text-slate-500">Memuat...</div>;
 
   return (
     <div className="page-container">
-      <div className="mb-6">
-        <h1 className="text-3xl font-heading font-extrabold text-navy">Beranda</h1>
-        <p className="text-slate-500">Ringkasan periode {formatBulan(data.periode)}</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-heading font-extrabold text-navy">Beranda</h1>
+          <p className="text-slate-500">Ringkasan periode {formatBulan(data.periode)}</p>
+        </div>
+        <button
+          onClick={exportCalendar}
+          data-testid="export-calendar-btn"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-navy text-white hover:bg-navy-light transition-colors duration-200 self-start sm:self-auto"
+          title="Unduh file kalender berisi jatuh tempo semua penghuni (pengingat bulanan otomatis di HP)"
+        >
+          <CalendarPlus size={17} /> Ekspor Kalender
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-5">

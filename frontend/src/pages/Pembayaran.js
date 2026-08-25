@@ -140,7 +140,10 @@ export default function Pembayaran() {
                 )}
 
                 <button
-                  onClick={() => downloadICS({ nama: p.nama, lokasi: p.lokasi, kamar: p.nomor_kamar, jumlah: p.jumlah, tanggal: null, ownerEmail: settings?.owner_email })}
+                  onClick={() => {
+                    downloadICS({ nama: p.nama, lokasi: p.lokasi, kamar: p.nomor_kamar, jumlah: p.jumlah, tanggal: p.tanggal_jatuh_tempo });
+                    toast.success("File kalender diunduh. Buka di HP lalu simpan ke Google Calendar.", { duration: 5000 });
+                  }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors duration-200"
                   data-testid={`ics-btn-${p.id}`}
                 >
