@@ -17,6 +17,7 @@ Legal Case Management System internal untuk Legal Group (LGG) BSI: monitoring, p
 - admin / Admin2026! (admin_legal)
 
 ### Yang Sudah Diimplementasikan (25 Agu 2026)
+- Logo resmi PT. Bank Syariah Indonesia (file /app/frontend/public/bsi-logo.png) terpasang di halaman login (panel hero + kartu login), sidebar dashboard, dan header mobile.
 - Auth JWT username/password + brute-force lockout (5x gagal → 423, kunci 15 menit; password benar membuka kembali).
 - Dashboard: KPI (perkara aktif, total kewajiban Rp, region/area/cabang, pending approval), grid 13 tahap proses, bar chart per region, pie chart status, area chart perjalanan perkara, panel Reminder & Tenggat (hari tersisa), filter tahun/region/area/cabang/status.
 - Data Perkara: tabel + search (nomor/penggugat/tergugat/CIF/loan) + filter lengkap + export Excel.

@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Scale, CheckSquare, History, FileText, BarChart3,
-  ListTree, Users, HardDrive, LogOut, Menu, Landmark,
+  ListTree, Users, HardDrive, LogOut, Menu,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,8 @@ function NavItems({ onNavigate }) {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
-      <div className="h-10 w-10 bg-toska rounded-md flex items-center justify-center shrink-0">
-        <Landmark className="h-5 w-5 text-white" />
-      </div>
+    <div className="flex flex-col gap-3 px-5 py-5 border-b border-slate-200">
+      <img src="/bsi-logo.png" alt="Bank Syariah Indonesia" data-testid="sidebar-bsi-logo" className="h-9 w-auto object-contain self-start" />
       <div className="leading-tight">
         <p className="font-heading font-bold text-slate-900 tracking-tight">CASEWISE</p>
         <p className="text-[10px] uppercase tracking-widest text-slate-500">Legal Perdata — BSI</p>
@@ -90,9 +88,7 @@ export default function Layout({ children }) {
       <div className="lg:pl-64">
         <header className="lg:hidden sticky top-0 z-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-toska rounded-md flex items-center justify-center">
-              <Landmark className="h-4 w-4 text-white" />
-            </div>
+            <img src="/bsi-logo.png" alt="Bank Syariah Indonesia" className="h-7 w-auto object-contain" />
             <p className="font-heading font-bold text-slate-900">CASEWISE</p>
           </div>
           <Sheet open={open} onOpenChange={setOpen}>

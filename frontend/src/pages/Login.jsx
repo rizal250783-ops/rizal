@@ -5,7 +5,7 @@ import { apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Landmark, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const BG = "https://images.pexels.com/photos/32327756/pexels-photo-32327756.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
@@ -38,22 +38,25 @@ export default function Login() {
         style={{ backgroundImage: `url(${BG})` }}
       >
         <div className="absolute inset-0 bg-toska-dark/85" />
-        <div className="relative z-10 flex flex-col justify-end p-12 text-white">
-          <p className="text-xs uppercase tracking-widest text-gold mb-3">PT. Bank Syariah Indonesia, Tbk</p>
-          <h1 className="font-heading text-4xl font-bold tracking-tight mb-3">CASEWISE LEGAL PERDATA</h1>
-          <p className="text-sm text-white/80 max-w-md leading-relaxed">
-            Legal Case Management System untuk monitoring, pengelolaan, approval, dan dokumentasi
-            perkara gugatan perdata oleh Legal Group (LGG).
-          </p>
+        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+          <div className="bg-white rounded-md px-4 py-3 self-start">
+            <img src="/bsi-logo.png" alt="Bank Syariah Indonesia" data-testid="login-bsi-logo" className="h-10 w-auto" />
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-widest text-gold mb-3">PT. Bank Syariah Indonesia, Tbk</p>
+            <h1 className="font-heading text-4xl font-bold tracking-tight mb-3">CASEWISE LEGAL PERDATA</h1>
+            <p className="text-sm text-white/80 max-w-md leading-relaxed">
+              Legal Case Management System untuk monitoring, pengelolaan, approval, dan dokumentasi
+              perkara gugatan perdata oleh Legal Group (LGG).
+            </p>
+          </div>
         </div>
       </div>
 
       <div className="flex-1 lg:max-w-xl flex items-center justify-center bg-white p-6">
         <div className="w-full max-w-sm">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="h-12 w-12 bg-toska rounded-md flex items-center justify-center">
-              <Landmark className="h-6 w-6 text-white" />
-            </div>
+          <div className="flex items-center gap-4 mb-8">
+            <img src="/bsi-logo.png" alt="Bank Syariah Indonesia" data-testid="login-card-bsi-logo" className="h-12 w-auto object-contain" />
             <div>
               <p className="font-heading font-bold text-xl text-slate-900 tracking-tight">CASEWISE</p>
               <p className="text-xs uppercase tracking-widest text-slate-500">Legal Perdata — BSI</p>
