@@ -1,0 +1,88 @@
+{
+  "project_context": {
+    "name": "CASEWISE LEGAL PERDATA",
+    "client": "PT. BANK SYARIAH INDONESIA, Tbk (BSI)",
+    "type": "Internal Legal Case Management Dashboard"
+  },
+  "general_ui_ux_design_guidelines": [
+    "Adopt 'Mode B: High Density Grid' strategy. Utilize tight spacing (gap-4 or gap-6) and avoid empty dead space to allow dense data rendering.",
+    "Prioritize 'Cardless' UI or flat surfaces with sharp edges (max 8px border-radius). Avoid soft, muddy shadows.",
+    "Use optical alignment and structured hierarchies. Use 1px solid borders (border-slate-200) to separate sections rather than relying on shadow elevations.",
+    "Never use completely transparent backgrounds for headers, overlays, or dropdowns. Ensure solid backgrounds (bg-white) with crisp borders.",
+    "Do not center-align layouts or dense content. Left-align paragraphs, inputs, labels, and tabular data to ensure legal data legibility.",
+    "Ensure 'prefers-reduced-motion' is respected. Avoid universal transition (transition: all). Target specific properties (e.g., transition-colors)."
+  ],
+  "theme_colors": {
+    "primary": "#00a0a0",
+    "primary_hover": "#008b8b",
+    "accent": "#f0b43c",
+    "accent_hover": "#dca028",
+    "background_base": "#f8fafc",
+    "surface": "#ffffff",
+    "text_primary": "#0f172a",
+    "text_secondary": "#475569",
+    "border": "#e2e8f0",
+    "danger": "#ef4444",
+    "success": "#10b981",
+    "warning_alert": "#fffbeb",
+    "rules": [
+      "Use #00a0a0 strictly for primary actions, active navigation states, and key chart metrics.",
+      "Use #f0b43c for high-priority alerts, reminders, and pending approval statuses.",
+      "Never use pure black or pure white for text; use text-slate-900 or text-slate-600 to reduce eye strain."
+    ]
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "IBM Plex Sans",
+    "rules": [
+      "No generic fonts (Inter, Roboto, Open Sans). Add Outfit and IBM Plex Sans from Google Fonts.",
+      "Headings (Outfit): Use tracking-tight, font-semibold to font-bold. Max size for dashboard pages is text-3xl.",
+      "Body (IBM Plex Sans): Use leading-relaxed for long text, tracking-normal. Highly readable for legal data.",
+      "Overlines/Labels: Uppercase, tracking-widest, text-xs, font-medium, text-slate-500."
+    ]
+  },
+  "layouts_and_grids": {
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 or gap-6.",
+    "widget_ratios": [
+      "Summary KPI: col-span-1",
+      "Primary Chart (Bar/Timeline): col-span-2 or col-span-3",
+      "Alerts/Reminders Feed: col-span-1 row-span-2"
+    ],
+    "spacing": "Generous internal padding for distinct forms (p-6 or p-8). Tighter gaps for data-heavy views."
+  },
+  "component_strategy": {
+    "forms": "Multi-section forms should use Shadcn Tabs or a custom vertical Stepper. Keep inputs dense but clear. Use Shadcn Input, Select, and Form.",
+    "tables": "Use crisp tables with border-b border-border. Add hover:bg-slate-50 on rows. Implement sticky headers if the list is long. Integrate search & filter inline.",
+    "approval_center": "Use dual-action UI: Tosca for 'Approve/Review', subtle Red outline/ghost button for 'Reject'. Include a prominent status badge.",
+    "timeline_perkara": "Build a vertical timeline visualizer using absolute positioning or left-bordered lists (border-l-2 border-slate-200) with solid indicator dots.",
+    "charts": "Use Recharts. Ensure chart colors map to the brand: Primary (#00a0a0), Accent (#f0b43c), and neutral slate for secondary data.",
+    "alerts_panel": "Use a subtle yellow/gold background (bg-yellow-50) with #f0b43c borders to highlight impending court dates (jadwal sidang)."
+  },
+  "media_and_icons": {
+    "icon_library": "lucide-react (Standard, clean, scales well for dashboards)",
+    "images": [
+      {
+        "category": "Login Page Background",
+        "url": "https://images.pexels.com/photos/32327756/pexels-photo-32327756.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Aerial view of Jakarta's modern urban skyline. Use with a heavy overlay (e.g., bg-slate-900/80 or bg-[#00a0a0]/90) so the login card contrasts perfectly."
+      }
+    ],
+    "rules": "No placeholder images allowed. Use the provided Jakarta skyline for the login screen."
+  },
+  "accessibility_and_testing": {
+    "testing_attributes": "All interactive elements (buttons, links, form inputs, tabs, export buttons, case row clicks) MUST include a 'data-testid' attribute (e.g., data-testid='login-submit-button').",
+    "contrast": "Ensure text over brand colors meets a minimum 4.5:1 ratio. White text on #00a0a0 is compliant. Dark text on #f0b43c."
+  },
+  "instructions_to_main_agent": [
+    "Initialize Tailwind CSS and configure the theme extensions for primary (#00a0a0) and accent (#f0b43c).",
+    "Inject the Google Fonts 'Outfit' and 'IBM Plex Sans' into the main index.html or App.css.",
+    "Build the components using .js and .jsx extensions (NO TypeScript / .tsx files).",
+    "Create the Login page with a split layout or centered card over the provided Jakarta skyline image.",
+    "Build a robust Sidebar navigation layout covering the requested modules (Dashboard, Data Perkara, Approval Center, Timeline, Dokumen, Laporan, Master Data).",
+    "Use Recharts for the Dashboard KPI charts (Bar, Pie).",
+    "Construct the multi-section 'Data Perkara' form using state-driven tabs/sections.",
+    "Implement the 'Approval Center' with clear Maker-Checker UI semantics.",
+    "Ensure the UI uses 'Cardless' or flat design with 1px borders, avoiding generic soft shadows.",
+    "Implement toasts using 'sonner' for success/error feedback (e.g., after approval/rejection or document upload)."
+  ]
+}
