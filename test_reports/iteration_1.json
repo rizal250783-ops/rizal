@@ -1,0 +1,54 @@
+{
+  "summary": "Full first-pass testing of CASEWISE LEGAL PERDATA (FastAPI + React + MongoDB). Backend: 49 pytest cases in /app/backend/tests/backend_test.py covering auth, dashboard, master-data, cases CRUD/search/filters, maker-checker approval (CREATE/EDIT/DELETE_NONAKTIF/DELETE_PERMANENT, approve+reject), operasional/agenda/timeline, documents (PDF upload/download/delete + non-PDF reject), export cases/database/template, import preview+execute, users CRUD/role guards → 48 passed, 1 failed (no brute-force lockout). Frontend: 5 Playwright runs on the public preview URL covering login (valid/invalid), dashboard (KPI 12 aktif / Rp 12.328.500.000 / 8 region, 13 tahap cards, 15 chart surfaces, 6 reminders), Data Perkara (12 rows, search, filters, Excel export), multi-tab input form with dynamic CIF/loan auto-total, end-to-end approval (create→MENUNGGU→approve→case visible; edit→reject with reason; delete NONAKTIF→approve→status TIDAK AKTIF + alasan), case detail (agenda→timeline, status/risk update persisted, PDF upload/delete, non-PDF rejected), Timeline page, 9 report types + export, User Management (create/toggle/inactive login blocked), Database Management (export xlsx, last-backup info, template, import preview with error table → BATALKAN and LANJUTKAN IMPORT), role guards (/users & /database redirect for admin_legal; menus hidden), mobile 390px nav. All core flows work; issues are security/hardening + minor UX.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/approvals/{id}/approve (type=CREATE)", "issue": "Duplicate nomor_perkara not re-validated at approval time. Two pending CREATE requests with the same nomor: first approve OK, second returns 500 Internal Server Error (Mongo DuplicateKeyError on unique index) and the request stays stuck at MENUNGGU forever. Reproduced: POST /api/cases twice (same nomor) as admin → approve both → 2nd = 500.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No rate limiting / account lockout — 6+ consecutive wrong passwords all return 401 (playbook expects lockout after 5 fails, 423/429)."},
+      {"endpoint": "POST /api/auth/login", "issue": "Token is returned in JSON only and stored by the frontend in localStorage; backend reads an 'access_token' cookie but never sets an httpOnly cookie. Deviation from the auth playbook (XSS exposure)."},
+      {"endpoint": "CORS middleware", "issue": "allow_credentials=True combined with CORS_ORIGINS='*' is an invalid/insecure combination; browsers reject credentialed requests. Use explicit origins."},
+      {"endpoint": "seed_database()", "issue": "Non-idempotent for credentials: seeded depthead/admin passwords are only set if the user does not exist; changing the seed password will not update an existing account."},
+      {"endpoint": "DELETE /api/cases/{id}/agenda/{agenda_id}", "issue": "Always returns {ok:true} even for non-existent case/agenda (no 404, no auth-scoped validation)."},
+      {"endpoint": "POST /api/import/execute", "issue": "Bulk import creates/updates cases directly with no maker-checker approval record, bypassing the audit trail required for all other data changes (dept_head only, so low severity but inconsistent)."},
+      {"endpoint": "POST /api/cases, PUT /api/cases/{id}", "issue": "Request bodies are raw dicts (no Pydantic models); only nomor_perkara is validated. status_perkara/risk_rating are not validated against master lists on create/edit (they are on PATCH /operasional)."},
+      {"endpoint": "POST /api/import/preview", "issue": "openpyxl.load_workbook on arbitrary uploads has no size limit and float() casts on loan/jaminan cells can raise an unhandled 500 for non-numeric cells (documents endpoint reads the whole file into memory before its 20MB check)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CaseForm / CaseDetail (agenda, mediasi, dokumen)", "issues": ["Native browser date pickers (input type=date) are used instead of the shadcn Calendar component; placeholder shows US 'mm/dd/yyyy' format in a Bahasa Indonesia app"]},
+      {"screen": "Sidebar (Layout.jsx)", "issues": ["For the admin account the name and role render identically ('Admin Legal' / 'Admin Legal'), looking like a duplicated line"]},
+      {"screen": "Mobile sheet menu", "issues": ["Console a11y error: DialogContent (SheetContent) requires a DialogTitle — add a visually-hidden title"]},
+      {"screen": "Dashboard", "issues": ["Recharts logs repeated 'width(-1) height(-1)' warnings on mount/route change (ResponsiveContainer inside an initially zero-size container); charts still render but console is noisy"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Re-validate nomor_perkara uniqueness inside apply_approval() for CREATE (and EDIT) and return 400 with a clear message instead of a 500; mark such requests REJECTED/failed instead of leaving them MENUNGGU",
+    "Add login rate limiting / lockout after 5 failed attempts (per username+IP) with 423/429 response",
+    "Replace CORS_ORIGINS='*' with explicit origin list (allow_credentials=True requires it); optionally issue an httpOnly cookie in addition to the Bearer token",
+    "Make seed_database idempotent for passwords (update password_hash of existing depthead/admin when seed value changes)",
+    "Add Pydantic request models for /api/cases POST/PUT and validate status_perkara/risk_rating against master lists; return 404 from agenda delete when not found",
+    "Split /app/backend/server.py (919 lines) into modules (auth, cases, approvals, documents, export/import, seed)",
+    "Replace native date inputs with the shadcn Calendar/DatePicker and use dd/mm/yyyy locale formatting",
+    "Add a visually-hidden DialogTitle to SheetContent to clear the a11y console error"
+  ],
+  "critical_code_review_comments": [
+    "apply_approval() writes to db.cases without re-checking business invariants — any Mongo constraint violation surfaces as an unhandled 500 and corrupts approval state (confirmed with duplicate nomor_perkara)",
+    "server.py is 919 lines and mixes auth, CRUD, file handling, Excel export/import and seed data — violates the <700 line / single-responsibility guideline",
+    "get_current_user(request) is typed loosely (imports Request inside the function) — use a proper dependency signature; role checks are only via dept_head_only, there is no per-record ownership check",
+    "No user delete/hard-delete endpoint exists, so accounts created by admins/tests accumulate permanently (only aktif toggle)",
+    "Import float() conversions and openpyxl parsing lack try/except → malformed spreadsheets produce 500 instead of a validation error row"
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/frontend/src/pages/CaseForm.jsx"],
+  "success_rate": {"backend": "98% (48/49 pytest)", "frontend": "100% of tested flows (no functional failures)"},
+  "seed_data_creation": "Temporary data only, all cleaned up: test cases (TEST-*, UI-*, UIIMP-*, DUP-*), test users (testuser*, uitest*), test approvals and import staging were deleted after testing. DB restored to 12 seed cases, users depthead+admin, 0 approvals. Added data-testid for loan OS Pokok/OS Margin/Penalti inputs in CaseForm.jsx (missing testids only).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "depthead / DeptHead2026! (dept_head), admin / Admin2026! (admin_legal) — both verified working",
+  "context_for_next_testing_agent": "Backend regression suite lives at /app/backend/tests/backend_test.py (run: cd /app/backend && python -m pytest tests/backend_test.py -v). It self-cleans created cases/approvals but leaves created users (no delete API) — remove users matching ^testuser via Mongo after runs. Only expected failure is TestAuth::test_brute_force_lockout until rate limiting is added. Frontend flows already verified: login, dashboard, cases search/filter/export, multi-tab create form, approve/reject, edit, delete NONAKTIF+PERMANENT, case detail agenda/status/documents, timeline, 9 reports + export, users management, database export/template/import(preview/cancel/execute), role guards, mobile nav. Not yet covered: document preview (eye) button rendering PDF inline, dashboard filter combinations with empty result sets, concurrent multi-admin approval races (one race bug already reported).",
+  "rca_of_the_issue": "Duplicate approval 500: create_case() checks nomor_perkara uniqueness only against db.cases at request time, but the case document is inserted later in apply_approval(). With a unique index on cases.nomor_perkara, approving a second pending CREATE for the same nomor raises pymongo DuplicateKeyError, which is not handled → FastAPI 500, and because the update of the approval status happens after apply_approval(), the request remains MENUNGGU. Fix: wrap apply_approval in try/except, re-check uniqueness, and return HTTP 400 with a Bahasa Indonesia message."
+}

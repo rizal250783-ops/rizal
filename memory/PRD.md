@@ -1,0 +1,40 @@
+# PRD — CASEWISE LEGAL PERDATA
+## PT. BANK SYARIAH INDONESIA, Tbk
+
+### Problem Statement (ringkasan)
+Legal Case Management System internal untuk Legal Group (LGG) BSI: monitoring, pengelolaan, approval (maker-checker), dokumentasi PDF, dashboard KPI, laporan, dan database management perkara gugatan perdata. Bahasa Indonesia. Warna brand: Hijau Toska #00a0a0, Gold #f0b43c.
+
+### Catatan Teknologi
+- Spesifikasi meminta Node.js; environment Emergent menggunakan **FastAPI + React + MongoDB** (standar platform) — fungsionalitas identik.
+- Database: MongoDB internal (MONGO_URL dari env).
+
+### User Persona
+1. **Admin Legal** — input/edit/hapus (via approval), upload dokumen, agenda sidang, export Excel, monitoring.
+2. **Dept Head Legal Perdata** — approve/reject semua perubahan, user management, database management (export/import/template/backup), KPI management.
+
+### Akun Seed
+- depthead / DeptHead2026! (dept_head, email: rizal.250783@gmail.com)
+- admin / Admin2026! (admin_legal)
+
+### Yang Sudah Diimplementasikan (25 Agu 2026)
+- Auth JWT username/password + brute-force lockout (5x gagal → 423, kunci 15 menit; password benar membuka kembali).
+- Dashboard: KPI (perkara aktif, total kewajiban Rp, region/area/cabang, pending approval), grid 13 tahap proses, bar chart per region, pie chart status, area chart perjalanan perkara, panel Reminder & Tenggat (hari tersisa), filter tahun/region/area/cabang/status.
+- Data Perkara: tabel + search (nomor/penggugat/tergugat/CIF/loan) + filter lengkap + export Excel.
+- Form multi-tab: Informasi Perkara (penggugat/tergugat dinamis), Organisasi BSI, CIF & Loan dinamis (1 CIF banyak loan, total kewajiban otomatis), Jaminan dinamis, Mediasi, Risk Rating + rekomendasi.
+- Approval workflow maker-checker: CREATE/EDIT/DELETE_NONAKTIF/DELETE_PERMANENT → MENUNGGU → APPROVED/REJECTED (reject wajib alasan, kolom approver/tanggal/catatan). Re-validasi duplikat nomor perkara saat approve (400, bukan 500).
+- Detail perkara: tab Detail, Agenda Sidang (otomatis masuk timeline), Dokumen (17 kategori, upload PDF only, preview/download/delete), Timeline vertikal, Status & Risk (18 tahapan status).
+- Halaman Timeline Perkara, Dokumen Perkara (global), Laporan (9 jenis termasuk aging 0-3/3-6/6-12/>12 bulan & executive summary), Master Data.
+- User Management (dept head): tambah admin, aktif/nonaktif; user nonaktif tidak bisa login; menu tersembunyi untuk admin.
+- Database Management (dept head): export database multi-sheet (6 sheet) dengan filter + aktif-only, info backup terakhir, download template import (4 sheet), import dengan validasi (sheet/baris/kolom/keterangan error), preview (baru/update/gagal) → LANJUTKAN/BATALKAN.
+- Seed 12 data perkara contoh (8 region, berbagai status/tahun/risk).
+- Role guard frontend + backend (403) untuk /users, /database, /api/users, /api/export/database, /api/import/*.
+
+### Status Pengujian
+- Backend: 49/49 pytest lulus (/app/backend/tests/backend_test.py).
+- Frontend: seluruh alur utama diverifikasi Playwright (testing agent iterasi 1) + screenshot manual.
+- Perbaikan pasca-test: duplikat nomor perkara saat approve (HIGH), brute-force lockout, CORS credentials, validasi import (non-numerik → baris error, batas 10MB), seed idempoten, 404 agenda delete, a11y SheetTitle.
+
+### Backlog Prioritas
+- P1: Ganti input date native dengan shadcn Calendar (format dd/mm/yyyy); hapus warning Recharts width(-1).
+- P2: Notifikasi in-app untuk admin saat request di-approve/reject; pagination server-side untuk tabel besar; pecah server.py menjadi modul (auth, cases, approvals, documents, export/import).
+- P2: Audit trail opsional (spesifikasi awal mengecualikan); hard-delete user.
