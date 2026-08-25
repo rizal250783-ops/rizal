@@ -10,8 +10,6 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
-from emails import send_email, reminder_html, EmailNotConfigured, EmailDeliveryError
-
 load_dotenv()
 
 MONGO_URL = os.environ["MONGO_URL"]
@@ -493,45 +491,6 @@ async def dashboard():
         "perlu_perhatian": perlu_perhatian,
         "owner_whatsapp": OWNER_WHATSAPP,
     }
-
-
-@router.get("/reminders/status")
-async def reminder_status():
-    configured = bool(os.environ.get("SENDGRID_API_KEY", "").strip()) and bool(os.environ.get("SENDER_EMAIL", "").strip())
-    return {"configured": configured, "owner_email": OWNER_EMAIL}
-
-
-async def _tunggakan_items(period, only_payment_id=None):
-    archived = {str(t["_id"]) async for t in db.tenants.find({"status": "arsip"}, {"_id": 1})}
-    items = []
-    query = {"status": "tunggakan"}
-    if only_payment_id:
-        query["_id"] = to_oid(only_payment_id)
-    async for p in db.payments.find(query):
-        if str(p["tenant_id"]) in archived:
-            continue
-        if not only_payment_id and p["bulan"] != period:
-            continue
-        item = await payment_out(p)
-        items.append(item)
-    return items
-
-
-@router.post("/reminders/send")
-async def send_reminder(payment_id: Optional[str] = None):
-    period = current_billing_month()
-    items = await _tunggakan_items(period, only_payment_id=payment_id)
-    if not items:
-        raise HTTPException(400, "Tidak ada tunggakan untuk dikirim.")
-    subject = f"Pengingat Tunggakan Kost ROSADAH KOST - {len(items)} penghuni"
-    html = reminder_html(items, items[0]["bulan"] if payment_id else period)
-    try:
-        send_email(OWNER_EMAIL, subject, html)
-    except EmailNotConfigured as e:
-        raise HTTPException(400, str(e))
-    except EmailDeliveryError as e:
-        raise HTTPException(502, str(e))
-    return {"ok": True, "terkirim": len(items), "tujuan": OWNER_EMAIL}
 
 
 app.include_router(router)

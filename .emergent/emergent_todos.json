@@ -1,26 +1,18 @@
 [
   {
-    "content": "Restore backend files (server.py, emails.py, logo_seed.txt) to /app/backend",
+    "content": "Backend: hapus import emails, endpoint /reminders/*, helper _tunggakan_items",
     "status": "completed"
   },
   {
-    "content": "Update backend/.env (preserve MONGO_URL, add DB_NAME/OWNER vars)",
+    "content": "Backend: hapus emails.py, sendgrid dari requirements.txt & .env",
     "status": "completed"
   },
   {
-    "content": "Install backend deps (sendgrid) + update requirements.txt",
+    "content": "Frontend: hapus tombol & fungsi reminder di Dashboard.js dan Pembayaran.js",
     "status": "completed"
   },
   {
-    "content": "Restore frontend source (src/, public/index.html, tailwind.config.js) to /app/frontend",
-    "status": "completed"
-  },
-  {
-    "content": "Install frontend deps (jspdf) via yarn add",
-    "status": "completed"
-  },
-  {
-    "content": "Restart services and verify app runs end-to-end",
+    "content": "Restart & verifikasi app tetap berjalan tanpa error",
     "status": "completed"
   }
 ]

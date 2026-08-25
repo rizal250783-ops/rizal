@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { CheckCircle2, XCircle, FileDown, Share2, Send, CalendarPlus, Mail } from "lucide-react";
+import { CheckCircle2, XCircle, FileDown, Share2, Send, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import api from "../api";
 import { useSettings } from "../App";
@@ -33,16 +33,6 @@ export default function Pembayaran() {
   const share = async (p) => {
     const ok = await shareReceiptPDF(p, settings);
     if (!ok) toast.info("Kwitansi diunduh (berbagi tidak didukung perangkat ini)");
-  };
-
-  const sendReminder = async (p) => {
-    const tid = toast.loading("Mengirim email pengingat...");
-    try {
-      const res = await api.post("/reminders/send", null, { params: { payment_id: p.id } });
-      toast.success(`Email pengingat terkirim ke ${res.data.tujuan}`, { id: tid });
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal mengirim email", { id: tid });
-    }
   };
 
   const ownerWa = settings?.owner_whatsapp || "6281313841255";
@@ -118,12 +108,6 @@ export default function Pembayaran() {
                 >
                   {p.status === "lunas" ? <><XCircle size={16} /> Batalkan Lunas</> : <><CheckCircle2 size={16} /> Tandai Lunas</>}
                 </button>
-
-                {p.status === "tunggakan" && (
-                  <button onClick={() => sendReminder(p)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors duration-200" data-testid={`email-reminder-btn-${p.id}`}>
-                    <Mail size={16} /> Email Pengingat
-                  </button>
-                )}
 
                 {p.status === "lunas" && (
                   <>

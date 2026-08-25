@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, BedDouble, DoorOpen, AlertTriangle, UserX, PieChart, TrendingUp, Mail, CalendarPlus } from "lucide-react";
+import { Wallet, BedDouble, DoorOpen, AlertTriangle, UserX, PieChart, TrendingUp, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import api from "../api";
 import { formatRupiah, formatBulan, downloadAllICS } from "../utils";
@@ -24,16 +24,6 @@ export default function Dashboard() {
 
   const load = () => api.get("/dashboard").then((r) => setData(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
-
-  const sendAllReminders = async () => {
-    const tid = toast.loading("Mengirim email pengingat...");
-    try {
-      const res = await api.post("/reminders/send");
-      toast.success(`Pengingat ${res.data.terkirim} penghuni terkirim ke ${res.data.tujuan}`, { id: tid });
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal mengirim email", { id: tid });
-    }
-  };
 
   const exportCalendar = async () => {
     const tid = toast.loading("Menyiapkan file kalender...");
@@ -106,11 +96,6 @@ export default function Dashboard() {
           <AlertTriangle size={18} className="text-rose-500" />
           <h2 className="font-heading font-bold text-navy text-lg">Perlu Perhatian</h2>
           <span className="ml-auto text-sm text-slate-500">{data.perlu_perhatian.length} penghuni menunggak</span>
-          {data.perlu_perhatian.length > 0 && (
-            <button onClick={sendAllReminders} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors duration-200" data-testid="send-all-reminders-btn">
-              <Mail size={15} /> Kirim Pengingat
-            </button>
-          )}
         </div>
         {data.perlu_perhatian.length === 0 ? (
           <div className="px-6 py-10 text-center text-slate-400" data-testid="perlu-perhatian-empty">
