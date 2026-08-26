@@ -17,6 +17,8 @@ Legal Case Management System internal untuk Legal Group (LGG) BSI: monitoring, p
 - admin / Admin2026! — Maya Dewi Maharani (LLA Officer)
 - arsya / Arsya2026! — Arsya Daniswara Dwitama (LLA Officer)
 - Label jabatan di seluruh UI: "Legal Litigation & Advice Manager" / "Legal Litigation & Advice Officer" (badge: LLA Manager / LLA Officer).
+- (26 Agu 2026) Database perkara dikosongkan atas permintaan user (12 perkara contoh + 61 approval + 11 export log dihapus, file upload dibersihkan); seed data contoh dinonaktifkan di server.py. Akun user tetap dipertahankan.
+- (26 Agu 2026) Istilah unit diganti: "Legal Group (LGG)" → "Retail Collection, Restructuring & Recovery Group (RCG)" di halaman login & dashboard.
 
 ### Yang Sudah Diimplementasikan (25 Agu 2026)
 - Dropdown bertingkat Region → Area berdasarkan file master "NAMA REGION DAN NAMA AREA.xlsx" (12 Region / RO, 45 Area, mapping di /app/backend/region_area.json, diekspos via GET /api/master-data field region_area_map). Memilih region otomatis memfilter opsi area di form Input/Edit Perkara (tab Organisasi BSI) dan filter Area di Dashboard, Data Perkara, Laporan, Database Management (ganti region mereset filter area).

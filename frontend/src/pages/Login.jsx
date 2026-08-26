@@ -47,7 +47,7 @@ export default function Login() {
             <h1 className="font-heading text-4xl font-bold tracking-tight mb-3">CASEWISE LEGAL PERDATA</h1>
             <p className="text-sm text-white/80 max-w-md leading-relaxed">
               Legal Case Management System untuk monitoring, pengelolaan, approval, dan dokumentasi
-              perkara gugatan perdata oleh Legal Group (LGG).
+              perkara gugatan perdata oleh Retail Collection, Restructuring & Recovery Group (RCG).
             </p>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function Login() {
           </form>
 
           <p className="text-xs text-slate-400 mt-8 text-center">
-            Internal Use Only — Legal Group (LGG) PT. Bank Syariah Indonesia, Tbk
+            Internal Use Only — Retail Collection, Restructuring & Recovery Group (RCG) — PT. Bank Syariah Indonesia, Tbk
           </p>
         </div>
       </div>

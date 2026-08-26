@@ -96,7 +96,7 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold text-slate-900 tracking-tight">Dashboard Monitoring</h1>
-          <p className="text-sm text-slate-500 mt-1">Monitoring perkara gugatan perdata — Legal Group (LGG)</p>
+          <p className="text-sm text-slate-500 mt-1">Monitoring perkara gugatan perdata — Retail Collection, Restructuring & Recovery Group (RCG)</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <FilterSelect k="tahun" label="Tahun" options={master?.tahun} />

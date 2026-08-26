@@ -944,30 +944,6 @@ async def seed_database():
             "id": str(uuid.uuid4()), "username": "arsya", "nama": "Arsya Daniswara Dwitama",
             "password_hash": hash_password("Arsya2026!"), "role": "admin_legal",
             "aktif": True, "created_at": datetime.now(timezone.utc).isoformat()})
-    if await db.cases.count_documents({}) == 0:
-        now = datetime.now(timezone.utc)
-        for idx, s in enumerate(SAMPLE_CASES):
-            created = now - timedelta(days=30 * (idx % 14) + 10)
-            doc = dict(s)
-            doc.update({
-                "id": str(uuid.uuid4()), "status_aktif": "AKTIF", "alasan_nonaktif": "",
-                "tanggal_input": created.isoformat(), "created_by": "admin",
-                "created_at": created.isoformat(), "updated_at": created.isoformat(),
-                "agenda_sidang": [
-                    {"id": str(uuid.uuid4()),
-                     "tanggal": (now + timedelta(days=5 + idx * 3)).date().isoformat(),
-                     "agenda": AGENDA_LIST[idx % len(AGENDA_LIST)],
-                     "keterangan": "Jadwal sidang berikutnya", "created_by": "Admin Legal"},
-                ] if idx % 2 == 0 else [],
-                "timeline": [
-                    {"id": str(uuid.uuid4()), "tanggal": created.date().isoformat(),
-                     "judul": "Perkara didaftarkan", "keterangan": "Data awal perkara (seed)", "type": "status"},
-                    {"id": str(uuid.uuid4()), "tanggal": (created + timedelta(days=14)).date().isoformat(),
-                     "judul": f"Status: {s['status_perkara']}", "keterangan": "Perkembangan perkara", "type": "status"},
-                ],
-            })
-            doc["total_kewajiban"] = compute_total_kewajiban(doc["cif_list"])
-            await db.cases.insert_one(doc)
     await db.users.create_index("username", unique=True)
     await db.cases.create_index("nomor_perkara", unique=True)
 
