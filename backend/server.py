@@ -104,7 +104,7 @@ async def auth_user(request: Request):
 
 async def dept_head_only(user=Depends(auth_user)):
     if user["role"] != "dept_head":
-        raise HTTPException(status_code=403, detail="Hanya Dept Head Legal Perdata")
+        raise HTTPException(status_code=403, detail="Hanya Legal Litigation & Advice Manager")
     return user
 
 
@@ -118,7 +118,7 @@ async def login(body: dict):
     user = await db.users.find_one({"username": username}, {"_id": 0})
     if user and verify_password(password, user["password_hash"]):
         if not user.get("aktif", True):
-            raise HTTPException(status_code=403, detail="Akun dinonaktifkan. Hubungi Dept Head.")
+            raise HTTPException(status_code=403, detail="Akun dinonaktifkan. Hubungi Legal Litigation & Advice Manager.")
         await db.login_attempts.delete_one({"_id": key})
         token = create_token(user["id"], user["role"])
         user.pop("password_hash", None)
@@ -914,26 +914,36 @@ async def seed_database():
     dept = await db.users.find_one({"username": "depthead"})
     if not dept:
         await db.users.insert_one({
-            "id": str(uuid.uuid4()), "username": "depthead", "nama": "Dept Head Legal Perdata",
+            "id": str(uuid.uuid4()), "username": "depthead", "nama": "Teguh Sutadi",
             "email": "rizal.250783@gmail.com", "password_hash": hash_password("DeptHead2026!"),
             "role": "dept_head", "aktif": True, "created_at": datetime.now(timezone.utc).isoformat()})
-    elif not verify_password("DeptHead2026!", dept["password_hash"]):
-        await db.users.update_one({"username": "depthead"},
-                                  {"$set": {"password_hash": hash_password("DeptHead2026!")}})
+    else:
+        upd = {}
+        if not verify_password("DeptHead2026!", dept["password_hash"]):
+            upd["password_hash"] = hash_password("DeptHead2026!")
+        if dept.get("nama") != "Teguh Sutadi":
+            upd["nama"] = "Teguh Sutadi"
+        if upd:
+            await db.users.update_one({"username": "depthead"}, {"$set": upd})
     adm = await db.users.find_one({"username": "admin"})
     if not adm:
         await db.users.insert_one({
-            "id": str(uuid.uuid4()), "username": "admin", "nama": "Admin Legal LGG",
+            "id": str(uuid.uuid4()), "username": "admin", "nama": "Maya Dewi Maharani",
             "password_hash": hash_password("Admin2026!"), "role": "admin_legal",
             "aktif": True, "created_at": datetime.now(timezone.utc).isoformat()})
     else:
         upd = {}
         if not verify_password("Admin2026!", adm["password_hash"]):
             upd["password_hash"] = hash_password("Admin2026!")
-        if adm.get("nama") == "Admin Legal":
-            upd["nama"] = "Admin Legal LGG"
+        if adm.get("nama") != "Maya Dewi Maharani":
+            upd["nama"] = "Maya Dewi Maharani"
         if upd:
             await db.users.update_one({"username": "admin"}, {"$set": upd})
+    if not await db.users.find_one({"username": "arsya"}):
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "username": "arsya", "nama": "Arsya Daniswara Dwitama",
+            "password_hash": hash_password("Arsya2026!"), "role": "admin_legal",
+            "aktif": True, "created_at": datetime.now(timezone.utc).isoformat()})
     if await db.cases.count_documents({}) == 0:
         now = datetime.now(timezone.utc)
         for idx, s in enumerate(SAMPLE_CASES):

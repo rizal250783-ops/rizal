@@ -73,7 +73,7 @@ export default function Database() {
     <div data-testid="database-page" className="space-y-5 max-w-5xl">
       <div>
         <h1 className="font-heading text-3xl font-bold text-slate-900 tracking-tight">Database Management</h1>
-        <p className="text-sm text-slate-500 mt-1">Export, import, dan backup manual database — khusus Dept Head Legal Perdata</p>
+        <p className="text-sm text-slate-500 mt-1">Export, import, dan backup manual database — khusus Legal Litigation & Advice Manager</p>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-md p-5 space-y-4">

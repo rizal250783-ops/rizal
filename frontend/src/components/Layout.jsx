@@ -77,7 +77,7 @@ export default function Layout({ children }) {
         <div className="border-t border-slate-200 p-4">
           <p className="text-sm font-semibold text-slate-900" data-testid="sidebar-user-name">{user?.nama}</p>
           <p className="text-xs text-slate-500 mb-3">
-            {user?.role === "dept_head" ? "Dept Head Legal Perdata" : "Admin Legal"}
+            {user?.role === "dept_head" ? "Legal Litigation & Advice Manager" : "Legal Litigation & Advice Officer"}
           </p>
           <Button data-testid="logout-button" variant="outline" size="sm" className="w-full" onClick={handleLogout}>
             <LogOut className="h-4 w-4 mr-2" /> Keluar
@@ -106,7 +106,7 @@ export default function Layout({ children }) {
               <div className="border-t border-slate-200 p-4">
                 <p className="text-sm font-semibold text-slate-900">{user?.nama}</p>
                 <p className="text-xs text-slate-500 mb-3">
-                  {user?.role === "dept_head" ? "Dept Head Legal Perdata" : "Admin Legal"}
+                  {user?.role === "dept_head" ? "Legal Litigation & Advice Manager" : "Legal Litigation & Advice Officer"}
                 </p>
                 <Button data-testid="logout-button-mobile" variant="outline" size="sm" className="w-full" onClick={handleLogout}>
                   <LogOut className="h-4 w-4 mr-2" /> Keluar

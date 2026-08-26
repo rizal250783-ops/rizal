@@ -50,7 +50,7 @@ export default function Cases() {
     setLoading(true);
     try {
       await api.post(`/cases/${delTarget.id}/delete-request`, { mode: delMode, alasan: delAlasan });
-      toast.success("Request penghapusan dikirim, menunggu approval Dept Head");
+      toast.success("Request penghapusan dikirim, menunggu approval Legal Litigation & Advice Manager");
       setDelTarget(null);
       setDelAlasan("");
       load();
@@ -205,7 +205,7 @@ export default function Cases() {
               <Label>{delMode === "NONAKTIF" ? "Alasan penghentian perkara" : "Alasan penghapusan perkara"} *</Label>
               <Textarea data-testid="delete-reason-input" value={delAlasan} onChange={(e) => setDelAlasan(e.target.value)} rows={3} />
             </div>
-            <p className="text-xs text-slate-500">Kedua pilihan wajib melalui approval Dept Head Legal Perdata.</p>
+            <p className="text-xs text-slate-500">Kedua pilihan wajib melalui approval Legal Litigation & Advice Manager.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDelTarget(null)}>Batal</Button>

@@ -9,12 +9,14 @@ Legal Case Management System internal untuk Legal Group (LGG) BSI: monitoring, p
 - Database: MongoDB internal (MONGO_URL dari env).
 
 ### User Persona
-1. **Admin Legal** — input/edit/hapus (via approval), upload dokumen, agenda sidang, export Excel, monitoring.
-2. **Dept Head Legal Perdata** — approve/reject semua perubahan, user management, database management (export/import/template/backup), KPI management.
+1. **Legal Litigation & Advice Officer** (role key: admin_legal) — input/edit/hapus (via approval), upload dokumen, agenda sidang, export Excel, monitoring. Pejabat: Maya Dewi Maharani (admin), Arsya Daniswara Dwitama (arsya).
+2. **Legal Litigation & Advice Manager** (role key: dept_head) — approve/reject semua perubahan, user management, database management, KPI management. Pejabat: Teguh Sutadi (depthead).
 
 ### Akun Seed
-- depthead / DeptHead2026! (dept_head, email: rizal.250783@gmail.com)
-- admin / Admin2026! (admin_legal)
+- depthead / DeptHead2026! — Teguh Sutadi (LLA Manager, email: rizal.250783@gmail.com)
+- admin / Admin2026! — Maya Dewi Maharani (LLA Officer)
+- arsya / Arsya2026! — Arsya Daniswara Dwitama (LLA Officer)
+- Label jabatan di seluruh UI: "Legal Litigation & Advice Manager" / "Legal Litigation & Advice Officer" (badge: LLA Manager / LLA Officer).
 
 ### Yang Sudah Diimplementasikan (25 Agu 2026)
 - Dropdown bertingkat Region → Area berdasarkan file master "NAMA REGION DAN NAMA AREA.xlsx" (12 Region / RO, 45 Area, mapping di /app/backend/region_area.json, diekspos via GET /api/master-data field region_area_map). Memilih region otomatis memfilter opsi area di form Input/Edit Perkara (tab Organisasi BSI) dan filter Area di Dashboard, Data Perkara, Laporan, Database Management (ganti region mereset filter area).

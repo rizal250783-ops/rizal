@@ -122,10 +122,10 @@ export default function CaseForm() {
     try {
       if (isEdit) {
         await api.put(`/cases/${id}`, payload);
-        toast.success("Perubahan dikirim, menunggu approval Dept Head");
+        toast.success("Perubahan dikirim, menunggu approval Manager");
       } else {
         await api.post("/cases", payload);
-        toast.success("Perkara baru dikirim, menunggu approval Dept Head");
+        toast.success("Perkara baru dikirim, menunggu approval Manager");
       }
       navigate("/perkara");
     } catch (e) {
@@ -146,7 +146,7 @@ export default function CaseForm() {
             {isEdit ? "Edit Data Perkara" : "Input Perkara Baru"}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            {isEdit ? "Perubahan wajib melalui approval Dept Head" : "Status: Draft → Menunggu Approval → Approved"}
+            {isEdit ? "Perubahan wajib melalui approval Legal Litigation & Advice Manager" : "Status: Draft → Menunggu Approval → Approved"}
           </p>
         </div>
       </div>

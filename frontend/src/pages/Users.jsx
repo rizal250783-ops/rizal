@@ -47,11 +47,11 @@ export default function Users() {
     <div data-testid="users-page" className="space-y-5 max-w-5xl">
       <div>
         <h1 className="font-heading text-3xl font-bold text-slate-900 tracking-tight">User Management</h1>
-        <p className="text-sm text-slate-500 mt-1">Kelola user Admin Legal — khusus Dept Head Legal Perdata</p>
+        <p className="text-sm text-slate-500 mt-1">Kelola user Legal Litigation & Advice Officer — khusus Legal Litigation & Advice Manager</p>
       </div>
 
       <form onSubmit={submit} className="bg-white border border-slate-200 rounded-md p-5">
-        <p className="text-xs uppercase tracking-widest text-slate-500 font-medium mb-4">Tambah User Admin Legal</p>
+        <p className="text-xs uppercase tracking-widest text-slate-500 font-medium mb-4">Tambah User Legal Litigation & Advice Officer</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
             <Label>Username</Label>
@@ -87,7 +87,7 @@ export default function Users() {
                 <TableCell className="text-sm">{u.nama}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className={u.role === "dept_head" ? "border-gold text-gold-hover" : "border-toska text-toska-dark"}>
-                    {u.role === "dept_head" ? "Dept Head" : "Admin Legal"}
+                    {u.role === "dept_head" ? "LLA Manager" : "LLA Officer"}
                   </Badge>
                 </TableCell>
                 <TableCell>
