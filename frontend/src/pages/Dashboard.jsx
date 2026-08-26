@@ -65,7 +65,11 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  const setF = (k) => (v) => setFilters((f) => ({ ...f, [k]: v }));
+  const setF = (k) => (v) => setFilters((f) => ({ ...f, [k]: v, ...(k === "region" ? { area: "all" } : {}) }));
+
+  const areaOptions = filters.region !== "all" && master?.region_area_map?.[filters.region]
+    ? master.region_area_map[filters.region]
+    : [...new Set([...(master?.areas || []), ...Object.values(master?.region_area_map || {}).flat()])];
 
   const tahapCount = (t) => {
     if (!stats) return 0;
@@ -97,7 +101,7 @@ export default function Dashboard() {
         <div className="flex flex-wrap gap-2">
           <FilterSelect k="tahun" label="Tahun" options={master?.tahun} />
           <FilterSelect k="region" label="Region" options={master?.regions} />
-          <FilterSelect k="area" label="Area" options={master?.areas} />
+          <FilterSelect k="area" label="Area" options={areaOptions} />
           <FilterSelect k="cabang" label="Cabang" options={master?.cabangs} />
           <FilterSelect k="status" label="Status" options={master?.status_perkara} />
         </div>

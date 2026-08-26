@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import json
 import logging
 import uuid
 import io
@@ -24,6 +25,11 @@ db = client[os.environ['DB_NAME']]
 
 UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+REGION_AREA_MAP = {}
+_ra_path = ROOT_DIR / "region_area.json"
+if _ra_path.exists():
+    REGION_AREA_MAP = json.loads(_ra_path.read_text())
 
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
@@ -587,6 +593,7 @@ async def master_data(user=Depends(auth_user)):
         "agenda_list": AGENDA_LIST,
         "dokumen_kategori": DOKUMEN_KATEGORI,
         "risk_ratings": RISK_RATINGS,
+        "region_area_map": REGION_AREA_MAP,
         "regions": await db.cases.distinct("region"),
         "areas": await db.cases.distinct("area"),
         "cabangs": await db.cases.distinct("cabang"),

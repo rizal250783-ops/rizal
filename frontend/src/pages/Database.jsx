@@ -55,8 +55,12 @@ export default function Database() {
     } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
   };
 
+  const areaOptions = filters.region !== "all" && master?.region_area_map?.[filters.region]
+    ? master.region_area_map[filters.region]
+    : [...new Set([...(master?.areas || []), ...Object.values(master?.region_area_map || {}).flat()])];
+
   const FS = ({ k, label, options }) => (
-    <Select value={filters[k]} onValueChange={(v) => setFilters((f) => ({ ...f, [k]: v }))}>
+    <Select value={filters[k]} onValueChange={(v) => setFilters((f) => ({ ...f, [k]: v, ...(k === "region" ? { area: "all" } : {}) }))}>
       <SelectTrigger data-testid={`db-filter-${k}`} className="w-full bg-white"><SelectValue placeholder={label} /></SelectTrigger>
       <SelectContent>
         <SelectItem value="all">Semua {label}</SelectItem>
@@ -80,7 +84,7 @@ export default function Database() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
           <FS k="tahun" label="Tahun" options={master?.tahun} />
           <FS k="region" label="Region" options={master?.regions} />
-          <FS k="area" label="Area" options={master?.areas} />
+          <FS k="area" label="Area" options={areaOptions} />
           <FS k="cabang" label="Cabang" options={master?.cabangs} />
           <FS k="status" label="Status" options={master?.status_perkara} />
           <FS k="risk_rating" label="Risk" options={master?.risk_ratings} />

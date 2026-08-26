@@ -96,6 +96,10 @@ export default function CaseForm() {
   const total = form.cif_list.reduce(
     (a, c) => a + c.loans.reduce((b, l) => b + (parseFloat(l.os_pokok) || 0) + (parseFloat(l.os_margin) || 0) + (parseFloat(l.penalti) || 0), 0), 0);
 
+  const regionMap = master?.region_area_map || {};
+  const regionOptions = [...new Set([...Object.keys(regionMap), ...(form.region ? [form.region] : [])])];
+  const areaOptions = regionMap[form.region] || (form.area ? [form.area] : []);
+
   const submit = async () => {
     if (!form.nomor_perkara.trim()) {
       toast.error("Nomor Perkara wajib diisi");
@@ -226,8 +230,24 @@ export default function CaseForm() {
 
         <TabsContent value="organisasi" className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Nama Region"><Input data-testid="input-region" value={form.region} onChange={set("region")} placeholder="cth: Region 1 - Jakarta" /></Field>
-            <Field label="Nama Area"><Input data-testid="input-area" value={form.area} onChange={set("area")} placeholder="cth: Area Jakarta Selatan" /></Field>
+            <Field label="Nama Region">
+              <Select value={form.region || "none"} onValueChange={(v) => setForm((f) => ({ ...f, region: v === "none" ? "" : v, area: "" }))}>
+                <SelectTrigger data-testid="select-region"><SelectValue placeholder="Pilih region" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Pilih Region</SelectItem>
+                  {regionOptions.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Nama Area">
+              <Select value={form.area || "none"} onValueChange={(v) => set("area")(v === "none" ? "" : v)} disabled={!form.region}>
+                <SelectTrigger data-testid="select-area"><SelectValue placeholder={form.region ? "Pilih area" : "Pilih region terlebih dahulu"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Pilih Area</SelectItem>
+                  {areaOptions.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
             <Field label="Nama Cabang"><Input data-testid="input-cabang" value={form.cabang} onChange={set("cabang")} placeholder="cth: KC Jakarta Tebet" /></Field>
             <Field label="Nama PIC"><Input data-testid="input-pic" value={form.pic} onChange={set("pic")} /></Field>
             <Field label="Kontak PIC"><Input data-testid="input-kontak-pic" value={form.kontak_pic} onChange={set("kontak_pic")} placeholder="cth: 0812-xxxx-xxxx" /></Field>

@@ -17,6 +17,7 @@ Legal Case Management System internal untuk Legal Group (LGG) BSI: monitoring, p
 - admin / Admin2026! (admin_legal)
 
 ### Yang Sudah Diimplementasikan (25 Agu 2026)
+- Dropdown bertingkat Region → Area berdasarkan file master "NAMA REGION DAN NAMA AREA.xlsx" (12 Region / RO, 45 Area, mapping di /app/backend/region_area.json, diekspos via GET /api/master-data field region_area_map). Memilih region otomatis memfilter opsi area di form Input/Edit Perkara (tab Organisasi BSI) dan filter Area di Dashboard, Data Perkara, Laporan, Database Management (ganti region mereset filter area).
 - Logo resmi PT. Bank Syariah Indonesia (file /app/frontend/public/bsi-logo.png) terpasang di halaman login (panel hero + kartu login), sidebar dashboard, dan header mobile.
 - Auth JWT username/password + brute-force lockout (5x gagal → 423, kunci 15 menit; password benar membuka kembali).
 - Dashboard: KPI (perkara aktif, total kewajiban Rp, region/area/cabang, pending approval), grid 13 tahap proses, bar chart per region, pie chart status, area chart perjalanan perkara, panel Reminder & Tenggat (hari tersisa), filter tahun/region/area/cabang/status.
