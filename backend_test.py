@@ -11,7 +11,7 @@ import time
 from typing import Dict, Optional
 
 # Base URL from frontend/.env
-BASE_URL = "https://github-deps-config.preview.emergentagent.com/api"
+BASE_URL = "https://github-import-setup-4.preview.emergentagent.com/api"
 
 # Generate unique suffix for this test run (4 digits max)
 TEST_RUN_ID = str(int(time.time()))[-4:]
