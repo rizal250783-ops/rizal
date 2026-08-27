@@ -92,7 +92,10 @@ function Holidays() {
     try { await api.post("/holidays", form); toast.success("Hari libur ditambahkan"); setForm({ tanggal: "", keterangan: "" }); load(); }
     catch (err) { toast.error(apiError(err)); }
   };
-  const del = async (h) => { await api.delete(`/holidays/${h.id}`); load(); };
+  const del = async (h) => {
+    try { await api.delete(`/holidays/${h.id}`); toast.success("Hari libur dihapus"); load(); }
+    catch (err) { toast.error(apiError(err)); }
+  };
   const inp = "px-3 py-2 border border-slate-300 rounded-md text-sm outline-none focus:border-[#00A0A0]";
 
   return (

@@ -71,10 +71,16 @@ def require_roles(*roles):
     return dep
 
 
-async def require_user_admin(user: dict = Depends(current_user)):
-    """Hanya SYAMSU RIZAL (NIP tertentu) yang boleh mengelola user."""
+async def require_user_admin(request: Request, user: dict = Depends(current_user)):
+    """Hanya SYAMSU RIZAL (NIP tertentu) yang boleh mengakses fitur admin."""
     if user.get("role") != "RCG" or user.get("nip") != C.USER_ADMIN_NIP:
-        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengelola user")
+        # Catat percobaan akses fitur admin oleh user lain untuk transparansi
+        try:
+            await audit(user, "access_denied", "admin_feature", request.url.path,
+                        None, {"path": request.url.path, "method": request.method})
+        except Exception:
+            pass
+        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengakses fitur admin")
     return user
 
 
@@ -196,10 +202,12 @@ async def get_holidays(user: dict = Depends(current_user)):
 
 @api.post("/holidays")
 async def add_holiday(req: HolidayReq, user: dict = Depends(require_user_admin)):
+    if await db.holidays.find_one({"tanggal": req.tanggal}):
+        raise HTTPException(status_code=400, detail="Tanggal hari libur sudah terdaftar")
     doc = {"id": str(uuid.uuid4()), "tanggal": req.tanggal, "keterangan": req.keterangan}
     await db.holidays.insert_one(doc)
-    await audit(user, "add_holiday", "holiday", doc["id"], None, doc)
     doc.pop("_id", None)
+    await audit(user, "add_holiday", "holiday", doc["id"], None, doc)
     return doc
 
 

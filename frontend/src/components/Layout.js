@@ -86,7 +86,14 @@ export default function Layout() {
         </nav>
         <div className="p-3 border-t border-slate-100">
           <div className="text-xs text-slate-500 mb-1">Masuk sebagai</div>
-          <div className="text-sm font-semibold text-slate-800 truncate">{user.nama}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-slate-800 truncate">{user.nama}</span>
+            {user.nip === "2183008345" && (
+              <span className="inline-flex items-center gap-1 bg-[#F0B43C] text-white text-[10px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5" data-testid="admin-badge" title="User Admin tertinggi">
+                <ShieldCheck size={11} /> Admin
+              </span>
+            )}
+          </div>
           <div className="text-xs text-[#00A0A0] font-medium">{user.role} • {user.nip}</div>
         </div>
       </aside>
