@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import logging
 from pathlib import Path
@@ -707,17 +708,27 @@ async def set_risk_assessment(nid: str, req: RAReq, user: dict = Depends(require
 @api.get("/notes")
 async def list_notes(status: Optional[str] = None, area: Optional[str] = None,
                      region: Optional[str] = None, segmen: Optional[str] = None,
+                     cabang: Optional[str] = None, q: Optional[str] = None,
                      user: dict = Depends(current_user)):
-    q = rbac_query(user)
+    query = rbac_query(user)
     if status:
-        q["status"] = status
+        query["status"] = status
     if area and user["role"] in ("RCRM", "RCG"):
-        q["area"] = area
+        query["area"] = area
     if region and user["role"] == "RCG":
-        q["region"] = region
-    notes = await db.notes.find(q, NO_ID).sort("updated_at", -1).to_list(2000)
+        query["region"] = region
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [
+            {"nomor_nota": rx},
+            {"customer.nama": rx},
+            {"facilities.nama_cabang": rx},
+        ]
+    notes = await db.notes.find(query, NO_ID).sort("updated_at", -1).to_list(2000)
     if segmen:
         notes = [n for n in notes if any(f.get("segmen") == segmen for f in n.get("facilities", []))]
+    if cabang:
+        notes = [n for n in notes if any((f.get("nama_cabang") or "") == cabang for f in n.get("facilities", []))]
     return notes
 
 

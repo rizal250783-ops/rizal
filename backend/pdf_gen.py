@@ -5,7 +5,7 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether,
 )
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 
@@ -30,6 +30,7 @@ def _styles():
     ss.add(ParagraphStyle("Body2", fontName="Helvetica", fontSize=8.5, textColor=DARK, leading=12, alignment=TA_JUSTIFY))
     ss.add(ParagraphStyle("Small", fontName="Helvetica", fontSize=7.5, textColor=DARK, leading=10))
     ss.add(ParagraphStyle("SmallB", fontName="Helvetica-Bold", fontSize=7.5, textColor=DARK, leading=10))
+    ss.add(ParagraphStyle("SmallW", fontName="Helvetica-Bold", fontSize=7.5, textColor=colors.white, leading=10))
     return ss
 
 
@@ -57,26 +58,54 @@ def _kv(rows, ss, widths=(45 * mm, 135 * mm)):
 
 
 def _grid(header, rows, ss, widths):
-    data = [[Paragraph(h, ss["SmallB"]) for h in header]]
+    data = [[Paragraph(h, ss["SmallW"]) for h in header]]
     for r in rows:
         data.append([Paragraph(str(c), ss["Small"]) for c in r])
     t = Table(data, colWidths=widths, repeatRows=1)
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-    ]))
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+    ]
+    t.setStyle(TableStyle(style))
     return t
+
+
+def _block(title, flowables, ss):
+    """Section header + its content kept together to avoid orphaned headers."""
+    items = [_section(title, ss)]
+    items.extend(flowables if isinstance(flowables, list) else [flowables])
+    return KeepTogether(items)
 
 
 def generate_note_pdf(note: dict) -> bytes:
     ss = _styles()
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=15 * mm, leftMargin=15 * mm, rightMargin=15 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=18 * mm, leftMargin=15 * mm, rightMargin=15 * mm)
     el = []
+
+    _nomor = note.get("nomor_nota", "") or "-"
+    _status = note.get("status", "") or ""
+
+    def _decorate(canvas, doc_):
+        canvas.saveState()
+        w, h = A4
+        # footer separator
+        canvas.setStrokeColor(GOLD)
+        canvas.setLineWidth(0.8)
+        canvas.line(15 * mm, 12 * mm, w - 15 * mm, 12 * mm)
+        canvas.setFont("Helvetica", 6.5)
+        canvas.setFillColor(colors.grey)
+        canvas.drawString(15 * mm, 8 * mm, "DOKUMEN RAHASIA - PT. Bank Syariah Indonesia, Tbk (Internal Use Only)")
+        canvas.drawCentredString(w / 2, 8 * mm, f"Nota: {_nomor}")
+        canvas.drawRightString(w - 15 * mm, 8 * mm, f"Halaman {doc_.page}")
+        canvas.restoreState()
 
     # Header
     head = Table([[
@@ -199,28 +228,28 @@ def generate_note_pdf(note: dict) -> bytes:
     el.append(_grid(["User", "Jabatan", "Fungsi", "Keputusan", "Waktu"], arows, ss,
                     [40 * mm, 45 * mm, 25 * mm, 30 * mm, 40 * mm]))
 
-    # Pengusul & Pemutus
-    el.append(_section("INFORMASI PENGUSUL & PEMUTUS", ss))
-    el.append(_kv([
-        ("Pengusul", f"{note.get('creator_nama','')} - NIP {note.get('creator_nip','')} ({note.get('dari','')})"),
-        ("Pemutus", f"{note.get('final_approver_nama','')} - NIP {note.get('final_approver_nip','')}"),
-        ("Jabatan Pemutus", note.get("final_approver_jabatan", "")),
-        ("Level Pemutus", note.get("final_approver_level", "")),
-        ("Nilai Kewenangan Pemutus", rp(note.get("nilai_kewenangan_pemutus"))),
-        ("Limit Pemutus Digunakan", rp(note.get("limit_pemutus_used"))),
-        ("Tanggal & Jam Approved", f"{note.get('approved_date','')} {note.get('approved_time','')}"),
-    ], ss))
-
-    # Approved stamp
-    el.append(Spacer(1, 6))
+    # Pengusul & Pemutus + Approved stamp (kept together)
     stamp = Table([[Paragraph("<b>APPROVED</b>", ParagraphStyle("st", fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER)),
                     Paragraph(f"Tanggal Approved: {note.get('approved_date','')}", ParagraphStyle("st2", fontName="Helvetica", fontSize=9, textColor=colors.white, alignment=TA_CENTER))]],
                    colWidths=[90 * mm, 90 * mm])
     stamp.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#10B981")), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-    el.append(stamp)
-    el.append(Spacer(1, 4))
-    el.append(Paragraph(note.get("approved_keterangan", ""), ParagraphStyle("kt", fontName="Helvetica-Oblique", fontSize=8, textColor=colors.grey, alignment=TA_JUSTIFY)))
+    el.append(KeepTogether([
+        _section("INFORMASI PENGUSUL & PEMUTUS", ss),
+        _kv([
+            ("Pengusul", f"{note.get('creator_nama','')} - NIP {note.get('creator_nip','')} ({note.get('dari','')})"),
+            ("Pemutus", f"{note.get('final_approver_nama','')} - NIP {note.get('final_approver_nip','')}"),
+            ("Jabatan Pemutus", note.get("final_approver_jabatan", "")),
+            ("Level Pemutus", note.get("final_approver_level", "")),
+            ("Nilai Kewenangan Pemutus", rp(note.get("nilai_kewenangan_pemutus"))),
+            ("Limit Pemutus Digunakan", rp(note.get("limit_pemutus_used"))),
+            ("Tanggal & Jam Approved", f"{note.get('approved_date','')} {note.get('approved_time','')}"),
+        ], ss),
+        Spacer(1, 6),
+        stamp,
+        Spacer(1, 4),
+        Paragraph(note.get("approved_keterangan", ""), ParagraphStyle("kt", fontName="Helvetica-Oblique", fontSize=8, textColor=colors.grey, alignment=TA_JUSTIFY)),
+    ]))
 
-    doc.build(el)
+    doc.build(el, onFirstPage=_decorate, onLaterPages=_decorate)
     buf.seek(0)
     return buf.read()

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
-import { formatRupiahShort, formatRupiah } from "../lib/format";
+import { formatRupiahShort, formatRupiah, statusColor } from "../lib/format";
 import {
   LayoutDashboard, FileText, FileClock, RotateCcw, CheckCircle2, ShieldAlert, Layers, Loader2
 } from "lucide-react";
@@ -42,6 +43,7 @@ function ChartCard({ title, children }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
 
   useEffect(() => { api.get("/dashboard").then((r) => setData(r.data)).catch(() => {}); }, []);
@@ -71,6 +73,33 @@ export default function Dashboard() {
           <Stat icon={FileText} label="Total OS Margin" value={formatRupiahShort(s.total_os_margin)} tone="gold" testid="stat-os-margin" />
           <Stat icon={FileText} label="Total Penalty" value={formatRupiahShort(s.total_penalty)} tone="slate" testid="stat-penalty" />
           <Stat icon={FileText} label="Total Kewajiban" value={formatRupiahShort(s.total_kewajiban)} tone="teal" testid="stat-kewajiban" />
+        </div>
+      )}
+
+      {/* Ringkasan Status - klik untuk lihat daftar nota */}
+      {data.by_status && Object.keys(data.by_status).length > 0 && (
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 mb-6" data-testid="status-summary">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-display font-semibold text-slate-800">Ringkasan Status Nota</h3>
+            <button onClick={() => navigate("/notes")} className="text-xs font-semibold text-[#00A0A0] hover:underline" data-testid="view-all-notes">
+              Lihat semua nota &rarr;
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            {Object.entries(data.by_status)
+              .sort((a, b) => b[1] - a[1])
+              .map(([status, count]) => (
+                <button
+                  key={status}
+                  data-testid={`status-chip-${status}`}
+                  onClick={() => navigate(`/notes?status=${encodeURIComponent(status)}`)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm font-medium transition hover:shadow-sm hover:-translate-y-0.5 ${statusColor(status)}`}
+                >
+                  <span>{status}</span>
+                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-white/70 text-slate-800 text-xs font-bold">{count}</span>
+                </button>
+              ))}
+          </div>
         </div>
       )}
 
