@@ -968,8 +968,37 @@ async def monitoring(user: dict = Depends(require_roles("RCRM", "RCG")),
 
 
 @api.get("/audit")
-async def audit_logs(user: dict = Depends(require_roles("RCG")), limit: int = 300):
-    return await db.audit_logs.find({}, NO_ID).sort("created_at", -1).to_list(limit)
+async def audit_logs(user: dict = Depends(require_roles("RCG")), limit: int = 1000,
+                     q: Optional[str] = None, action: Optional[str] = None,
+                     entity: Optional[str] = None, date_from: Optional[str] = None,
+                     date_to: Optional[str] = None):
+    query = {}
+    if action:
+        query["action"] = action
+    if entity:
+        query["entity"] = entity
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"nama": rx}, {"nip": rx}]
+    created = {}
+    if date_from:
+        created["$gte"] = date_from  # ISO strings sort lexicographically; "YYYY-MM-DD" <= "YYYY-MM-DDT..."
+    if date_to:
+        try:
+            nxt = (datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        except Exception:
+            nxt = date_to
+        created["$lt"] = nxt
+    if created:
+        query["created_at"] = created
+    return await db.audit_logs.find(query, NO_ID).sort("created_at", -1).to_list(limit)
+
+
+@api.get("/audit/meta")
+async def audit_meta(user: dict = Depends(require_roles("RCG"))):
+    actions = await db.audit_logs.distinct("action")
+    entities = await db.audit_logs.distinct("entity")
+    return {"actions": sorted([a for a in actions if a]), "entities": sorted([e for e in entities if e])}
 
 
 @api.get("/export/excel")
@@ -993,6 +1022,94 @@ async def export_excel(request: Request, region: Optional[str] = None, area: Opt
     return StreamingResponse(io.BytesIO(data),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment; filename=Export_Nota_RCG.xlsx"})
+
+
+@api.get("/export/notes-excel")
+async def export_notes_excel_filtered(user: dict = Depends(current_user),
+                                      status: Optional[str] = None, area: Optional[str] = None,
+                                      region: Optional[str] = None, cabang: Optional[str] = None,
+                                      q: Optional[str] = None):
+    """Ekspor Excel berwarna mengikuti filter aktif di Daftar Nota (RBAC per peran)."""
+    query = rbac_query(user)
+    if status:
+        query["status"] = status
+    if area and user["role"] in ("RCRM", "RCG"):
+        query["area"] = area
+    if region and user["role"] == "RCG":
+        query["region"] = region
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"nomor_nota": rx}, {"customer.nama": rx}, {"facilities.nama_cabang": rx}]
+    notes = await db.notes.find(query, NO_ID).sort("updated_at", -1).to_list(5000)
+    if cabang:
+        notes = [n for n in notes if any((f.get("nama_cabang") or "") == cabang for f in n.get("facilities", []))]
+    parts = []
+    if q and q.strip():
+        parts.append(f"cari='{q.strip()}'")
+    if status:
+        parts.append(f"status={status}")
+    if region:
+        parts.append(f"region={region}")
+    if area:
+        parts.append(f"area={area}")
+    if cabang:
+        parts.append(f"cabang={cabang}")
+    meta = {"by": f"{user.get('nama')} ({user.get('role')})", "filter_text": ", ".join(parts) if parts else None}
+    data = export_notes_excel(notes, meta)
+    await audit(user, "export_notes_excel", "note", "-", None, {"count": len(notes)})
+    fname = f"Daftar_Nota_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+
+class PresetReq(BaseModel):
+    name: str
+    scope: Optional[str] = "region"  # "region" | "global"
+    region: Optional[str] = None
+    filters: Optional[dict] = {}
+
+
+@api.post("/presets")
+async def create_preset(req: PresetReq, user: dict = Depends(require_roles("RCG"))):
+    if not user.get("is_user_admin"):
+        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat membagikan preset")
+    if not req.name or not req.name.strip():
+        raise HTTPException(status_code=400, detail="Nama preset wajib diisi")
+    scope = "global" if req.scope == "global" else "region"
+    region = None if scope == "global" else (req.region or None)
+    if scope == "region" and not region:
+        raise HTTPException(status_code=400, detail="Region wajib untuk preset per region")
+    doc = {
+        "id": str(uuid.uuid4()), "name": req.name.strip(), "scope": scope, "region": region,
+        "filters": req.filters or {}, "created_by_nip": user["nip"], "created_by_nama": user["nama"],
+        "created_at": now_iso(),
+    }
+    await db.note_presets.insert_one(doc)
+    await audit(user, "create_preset", "preset", doc["id"], None, {"name": doc["name"], "scope": scope, "region": region})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/presets")
+async def list_presets(user: dict = Depends(current_user)):
+    if user.get("is_user_admin"):
+        return await db.note_presets.find({}, NO_ID).sort("created_at", -1).to_list(500)
+    ors = [{"scope": "global"}]
+    if user.get("region"):
+        ors.append({"scope": "region", "region": user.get("region")})
+    return await db.note_presets.find({"$or": ors}, NO_ID).sort("created_at", -1).to_list(500)
+
+
+@api.delete("/presets/{pid}")
+async def delete_preset(pid: str, user: dict = Depends(require_roles("RCG"))):
+    if not user.get("is_user_admin"):
+        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat menghapus preset bersama")
+    r = await db.note_presets.delete_one({"id": pid})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Preset tidak ditemukan")
+    await audit(user, "delete_preset", "preset", pid)
+    return {"ok": True}
 
 
 @api.get("/")

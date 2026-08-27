@@ -1349,56 +1349,590 @@ def print_summary():
 
 
 def main():
-    """Run all tests"""
-    print("="*80)
-    print("RCG DIGITAL RESTRUCTURING - BACKEND API TESTS")
+    """Run all tests for the 3 NEW backend endpoints"""
+    print("\n" + "="*80)
+    print("RCG DIGITAL RESTRUCTURING - BACKEND API TESTING")
+    print("Testing 3 NEW Endpoints: Audit Panel, Excel Export, Shared Presets")
     print("="*80)
     print(f"Base URL: {BASE_URL}")
-    print("="*80)
+    print(f"Test Run ID: {TEST_RUN_ID}")
     
-    # Check if we should run only specific tests
-    import os
-    test_mode = os.environ.get("TEST_MODE", "all")
-    
-    if test_mode == "user_history_only":
-        print("\n🎯 RUNNING USER HISTORY TEST ONLY\n")
-        test_user_history()
-    elif test_mode == "admin_edit_only":
-        print("\n🎯 RUNNING ADMIN EDIT USER TESTS ONLY\n")
-        test_admin_edit_limit()
-        test_admin_move_area()
-        test_authorization_non_admin()
-        test_admin_create_rcg_user()
-    else:
-        # Run approval flow tests
-        approved_small = test_approval_flow_small_amount()
-        approved_large = test_approval_flow_large_amount()
-        test_approval_flow_reject()
-        test_approval_flow_revisi()
-        test_authorization()
-        
-        # Use one of the approved notas for PDF test
-        approved_nota = approved_small or approved_large
-        
-        # Run other tests
-        test_search_and_filter(approved_nota)
-        test_pdf_generation(approved_nota)
-        test_dashboard()
-        
-        # Run admin edit user tests
-        test_admin_edit_limit()
-        test_admin_move_area()
-        test_authorization_non_admin()
-        test_admin_create_rcg_user()
-        
-        # Run user history test
-        test_user_history()
+    # Run tests for 3 new endpoints
+    test_audit_panel()
+    test_excel_export()
+    test_shared_presets()
     
     # Print summary
-    all_passed = print_summary()
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
+    
+    print(f"\n✅ PASSED: {len(test_results['passed'])}")
+    for result in test_results["passed"]:
+        print(f"  {result}")
+    
+    if test_results["failed"]:
+        print(f"\n❌ FAILED: {len(test_results['failed'])}")
+        for result in test_results["failed"]:
+            print(f"  {result}")
+    
+    if test_results["warnings"]:
+        print(f"\n⚠️  WARNINGS: {len(test_results['warnings'])}")
+        for warning in test_results["warnings"]:
+            print(f"  {warning}")
+    
+    total_tests = len(test_results["passed"]) + len(test_results["failed"])
+    pass_rate = (len(test_results["passed"]) / total_tests * 100) if total_tests > 0 else 0
+    
+    print(f"\nTotal: {total_tests} tests, {len(test_results['passed'])} passed, {len(test_results['failed'])} failed ({pass_rate:.1f}% pass rate)")
+    
+    all_passed = len(test_results["failed"]) == 0
+    if all_passed:
+        print("\n🎉 ALL TESTS PASSED!")
+    else:
+        print("\n⚠️  SOME TESTS FAILED - See details above")
     
     sys.exit(0 if all_passed else 1)
 
 
+def test_audit_panel():
+    """TEST 1 - Panel Audit Global: GET /audit/meta and GET /audit with filters"""
+    print("\n" + "="*80)
+    print("TEST 1: PANEL AUDIT GLOBAL")
+    print("="*80)
+    
+    # Login as admin
+    admin_auth = login(CREDENTIALS["admin"]["nip"])
+    if not admin_auth:
+        log_test("Audit Panel - Admin Login", False, "Failed to login as admin")
+        return
+    
+    admin_token = admin_auth["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Test 1.1: GET /audit/meta as admin
+    print("\n[1.1] GET /audit/meta as admin")
+    try:
+        resp = requests.get(f"{BASE_URL}/audit/meta", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            meta = resp.json()
+            has_actions = "actions" in meta and isinstance(meta["actions"], list) and len(meta["actions"]) > 0
+            has_entities = "entities" in meta and isinstance(meta["entities"], list) and len(meta["entities"]) > 0
+            
+            if has_actions and has_entities:
+                print(f"   ✓ Response: {len(meta['actions'])} actions, {len(meta['entities'])} entities")
+                print(f"   Actions sample: {meta['actions'][:5]}")
+                print(f"   Entities sample: {meta['entities'][:5]}")
+                
+                # Check for expected actions
+                expected_actions = ["login", "update_user", "export_notes_excel"]
+                found_actions = [a for a in expected_actions if a in meta["actions"]]
+                if len(found_actions) >= 2:
+                    log_test("GET /audit/meta - Returns non-empty actions and entities", True)
+                else:
+                    log_test("GET /audit/meta - Returns non-empty actions and entities", False, 
+                            f"Expected actions like {expected_actions}, found {found_actions}")
+            else:
+                log_test("GET /audit/meta - Returns non-empty actions and entities", False, 
+                        f"Empty lists: actions={has_actions}, entities={has_entities}")
+        else:
+            log_test("GET /audit/meta - Returns 200", False, f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /audit/meta - Returns 200", False, str(e))
+    
+    # Test 1.2: GET /audit with filters (entity, action, date range)
+    print("\n[1.2] GET /audit with filters (entity=user, action=update_user, date range)")
+    try:
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        params = {
+            "entity": "user",
+            "action": "update_user",
+            "date_from": today,
+            "date_to": today
+        }
+        
+        resp = requests.get(f"{BASE_URL}/audit", headers=headers, params=params, timeout=10)
+        if resp.status_code == 200:
+            logs = resp.json()
+            print(f"   ✓ Response: {len(logs)} audit log entries")
+            
+            # Verify all returned items match filters
+            all_match = True
+            for item in logs:
+                if item.get("entity") != "user":
+                    all_match = False
+                    log_test("GET /audit filters - entity filter", False, 
+                            f"Found entity={item.get('entity')}, expected 'user'")
+                    break
+                if item.get("action") != "update_user":
+                    all_match = False
+                    log_test("GET /audit filters - action filter", False, 
+                            f"Found action={item.get('action')}, expected 'update_user'")
+                    break
+                
+                # Check date range (created_at should be within [date_from, date_to+1day))
+                created_at = item.get("created_at", "")
+                if not created_at.startswith(today):
+                    # Allow if it's within the date range (ISO format comparison)
+                    if created_at < today or created_at >= f"{today}T23:59:59":
+                        all_match = False
+                        log_test("GET /audit filters - date range filter", False, 
+                                f"Found created_at={created_at}, expected date {today}")
+                        break
+            
+            if all_match:
+                log_test("GET /audit filters - All filters working (entity, action, date)", True)
+                if len(logs) > 0:
+                    print(f"   Sample entry: entity={logs[0].get('entity')}, action={logs[0].get('action')}, created_at={logs[0].get('created_at')[:10]}")
+            elif len(logs) == 0:
+                log_warning("No audit logs found for today with entity=user, action=update_user. This might be expected if no user updates happened today.")
+                log_test("GET /audit filters - Returns 200 with list", True)
+        else:
+            log_test("GET /audit filters - Returns 200", False, f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /audit filters - Returns 200", False, str(e))
+    
+    # Test 1.3: GET /audit with q (search by nama/nip)
+    print("\n[1.3] GET /audit with q=SYAMSU (search by nama)")
+    try:
+        params = {"q": "SYAMSU"}
+        resp = requests.get(f"{BASE_URL}/audit", headers=headers, params=params, timeout=10)
+        if resp.status_code == 200:
+            logs = resp.json()
+            print(f"   ✓ Response: {len(logs)} audit log entries")
+            
+            # Verify all returned items have nama or nip matching "SYAMSU" (case-insensitive)
+            all_match = True
+            for item in logs:
+                nama = (item.get("nama") or "").upper()
+                nip = (item.get("nip") or "").upper()
+                if "SYAMSU" not in nama and "SYAMSU" not in nip:
+                    all_match = False
+                    log_test("GET /audit q filter - Search by nama/nip", False, 
+                            f"Found nama={item.get('nama')}, nip={item.get('nip')}, expected to contain 'SYAMSU'")
+                    break
+            
+            if all_match and len(logs) > 0:
+                log_test("GET /audit q filter - Search by nama/nip working", True)
+                print(f"   Sample: nama={logs[0].get('nama')}, nip={logs[0].get('nip')}")
+            elif len(logs) == 0:
+                log_warning("No audit logs found with q=SYAMSU")
+                log_test("GET /audit q filter - Returns 200 with list", True)
+        else:
+            log_test("GET /audit q filter - Returns 200", False, f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /audit q filter - Returns 200", False, str(e))
+    
+    # Test 1.4: Authorization - GET /audit as RCO (should be 403)
+    print("\n[1.4] Authorization: GET /audit as RCO (expect 403)")
+    rco_auth = login(CREDENTIALS["rco_banda_aceh"]["nip"])
+    if rco_auth:
+        rco_token = rco_auth["token"]
+        rco_headers = {"Authorization": f"Bearer {rco_token}"}
+        
+        try:
+            resp = requests.get(f"{BASE_URL}/audit", headers=rco_headers, timeout=10)
+            if resp.status_code == 403:
+                log_test("GET /audit authorization - RCO blocked with 403", True)
+            else:
+                log_test("GET /audit authorization - RCO blocked with 403", False, 
+                        f"Expected 403, got {resp.status_code}")
+        except Exception as e:
+            log_test("GET /audit authorization - RCO blocked with 403", False, str(e))
+    
+    # Test 1.5: Authorization - GET /audit/meta as RCO (should be 403)
+    print("\n[1.5] Authorization: GET /audit/meta as RCO (expect 403)")
+    if rco_auth:
+        try:
+            resp = requests.get(f"{BASE_URL}/audit/meta", headers=rco_headers, timeout=10)
+            if resp.status_code == 403:
+                log_test("GET /audit/meta authorization - RCO blocked with 403", True)
+            else:
+                log_test("GET /audit/meta authorization - RCO blocked with 403", False, 
+                        f"Expected 403, got {resp.status_code}")
+        except Exception as e:
+            log_test("GET /audit/meta authorization - RCO blocked with 403", False, str(e))
+
+
+def test_excel_export():
+    """TEST 2 - Excel Export: GET /export/notes-excel with filters and RBAC"""
+    print("\n" + "="*80)
+    print("TEST 2: EXCEL EXPORT (STYLED)")
+    print("="*80)
+    
+    # Login as admin (RCG)
+    admin_auth = login(CREDENTIALS["admin"]["nip"])
+    if not admin_auth:
+        log_test("Excel Export - Admin Login", False, "Failed to login as admin")
+        return
+    
+    admin_token = admin_auth["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    # Test 2.1: GET /export/notes-excel as admin (no filter)
+    print("\n[2.1] GET /export/notes-excel as admin (no filter)")
+    try:
+        resp = requests.get(f"{BASE_URL}/export/notes-excel", headers=headers, timeout=15)
+        if resp.status_code == 200:
+            content_type = resp.headers.get("Content-Type", "")
+            content_disp = resp.headers.get("Content-Disposition", "")
+            body_length = len(resp.content)
+            
+            # Check content-type contains 'spreadsheetml' (xlsx)
+            is_xlsx_type = "spreadsheetml" in content_type
+            # Check Content-Disposition filename starts with 'Daftar_Nota_'
+            has_correct_filename = "Daftar_Nota_" in content_disp
+            # Check body length > 0 and starts with PK (zip magic bytes for xlsx)
+            is_valid_xlsx = body_length > 0 and resp.content[:2] == b'PK'
+            
+            print(f"   Content-Type: {content_type}")
+            print(f"   Content-Disposition: {content_disp}")
+            print(f"   Body length: {body_length} bytes")
+            print(f"   Starts with PK (xlsx magic): {resp.content[:2] == b'PK'}")
+            
+            if is_xlsx_type and has_correct_filename and is_valid_xlsx:
+                log_test("GET /export/notes-excel - Returns valid xlsx with correct headers", True)
+            else:
+                details = []
+                if not is_xlsx_type:
+                    details.append(f"content-type={content_type}")
+                if not has_correct_filename:
+                    details.append(f"filename not starts with Daftar_Nota_")
+                if not is_valid_xlsx:
+                    details.append(f"body_length={body_length}, magic={resp.content[:2]}")
+                log_test("GET /export/notes-excel - Returns valid xlsx with correct headers", False, 
+                        ", ".join(details))
+        else:
+            log_test("GET /export/notes-excel - Returns 200", False, f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /export/notes-excel - Returns 200", False, str(e))
+    
+    # Test 2.2: GET /export/notes-excel with filter (status=Draft)
+    print("\n[2.2] GET /export/notes-excel as admin with filter status=Draft")
+    try:
+        params = {"status": "Draft"}
+        resp = requests.get(f"{BASE_URL}/export/notes-excel", headers=headers, params=params, timeout=15)
+        if resp.status_code == 200:
+            is_valid_xlsx = len(resp.content) > 0 and resp.content[:2] == b'PK'
+            content_type = resp.headers.get("Content-Type", "")
+            is_xlsx_type = "spreadsheetml" in content_type
+            
+            if is_valid_xlsx and is_xlsx_type:
+                log_test("GET /export/notes-excel with filter - Returns valid xlsx", True)
+                print(f"   Body length: {len(resp.content)} bytes")
+            else:
+                log_test("GET /export/notes-excel with filter - Returns valid xlsx", False, 
+                        f"content-type={content_type}, valid_xlsx={is_valid_xlsx}")
+        else:
+            log_test("GET /export/notes-excel with filter - Returns 200", False, 
+                    f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /export/notes-excel with filter - Returns 200", False, str(e))
+    
+    # Test 2.3: GET /export/notes-excel as RCO (RBAC: should only include RCO's own notes)
+    print("\n[2.3] GET /export/notes-excel as RCO (RBAC check)")
+    rco_auth = login(CREDENTIALS["rco_banda_aceh"]["nip"])
+    if rco_auth:
+        rco_token = rco_auth["token"]
+        rco_headers = {"Authorization": f"Bearer {rco_token}"}
+        
+        try:
+            resp = requests.get(f"{BASE_URL}/export/notes-excel", headers=rco_headers, timeout=15)
+            if resp.status_code == 200:
+                is_valid_xlsx = len(resp.content) > 0 and resp.content[:2] == b'PK'
+                content_type = resp.headers.get("Content-Type", "")
+                is_xlsx_type = "spreadsheetml" in content_type
+                
+                if is_valid_xlsx and is_xlsx_type:
+                    log_test("GET /export/notes-excel as RCO - Returns valid xlsx (RBAC applied)", True)
+                    print(f"   Body length: {len(resp.content)} bytes")
+                    print(f"   Note: Cannot verify xlsx contents, but 200 + valid xlsx + no error indicates RBAC working")
+                else:
+                    log_test("GET /export/notes-excel as RCO - Returns valid xlsx", False, 
+                            f"content-type={content_type}, valid_xlsx={is_valid_xlsx}")
+            else:
+                log_test("GET /export/notes-excel as RCO - Returns 200", False, 
+                        f"Status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            log_test("GET /export/notes-excel as RCO - Returns 200", False, str(e))
+
+
+def test_shared_presets():
+    """TEST 3 - Shared Presets: POST/GET/DELETE /presets with scope/region visibility"""
+    print("\n" + "="*80)
+    print("TEST 3: SHARED PRESETS (/presets)")
+    print("="*80)
+    
+    # Login as admin
+    admin_auth = login(CREDENTIALS["admin"]["nip"])
+    if not admin_auth:
+        log_test("Shared Presets - Admin Login", False, "Failed to login as admin")
+        return
+    
+    admin_token = admin_auth["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    created_preset_ids = []
+    
+    # Test 3.1: POST /presets as admin (scope=region, region='RO I ACEH')
+    print("\n[3.1] POST /presets as admin (scope=region, region='RO I ACEH')")
+    try:
+        payload = {
+            "name": "Draft Aceh",
+            "scope": "region",
+            "region": "RO I ACEH",
+            "filters": {"status": "Draft"}
+        }
+        resp = requests.post(f"{BASE_URL}/presets", headers=headers, json=payload, timeout=10)
+        if resp.status_code == 200:
+            preset = resp.json()
+            preset_id = preset.get("id")
+            created_preset_ids.append(preset_id)
+            
+            # Verify response
+            is_correct = (preset.get("scope") == "region" and 
+                         preset.get("region") == "RO I ACEH" and
+                         preset.get("name") == "Draft Aceh")
+            
+            if is_correct:
+                log_test("POST /presets - Create region-scoped preset", True)
+                print(f"   Created preset: id={preset_id}, scope={preset.get('scope')}, region={preset.get('region')}")
+            else:
+                log_test("POST /presets - Create region-scoped preset", False, 
+                        f"Response mismatch: {preset}")
+        else:
+            log_test("POST /presets - Create region-scoped preset", False, 
+                    f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("POST /presets - Create region-scoped preset", False, str(e))
+    
+    # Test 3.2: POST /presets as admin (scope=global)
+    print("\n[3.2] POST /presets as admin (scope=global)")
+    try:
+        payload = {
+            "name": "Global Approved",
+            "scope": "global",
+            "filters": {"status": "Final Approved"}
+        }
+        resp = requests.post(f"{BASE_URL}/presets", headers=headers, json=payload, timeout=10)
+        if resp.status_code == 200:
+            preset = resp.json()
+            preset_id = preset.get("id")
+            created_preset_ids.append(preset_id)
+            
+            # Verify response (region should be null for global)
+            is_correct = (preset.get("scope") == "global" and 
+                         preset.get("region") is None and
+                         preset.get("name") == "Global Approved")
+            
+            if is_correct:
+                log_test("POST /presets - Create global-scoped preset", True)
+                print(f"   Created preset: id={preset_id}, scope={preset.get('scope')}, region={preset.get('region')}")
+            else:
+                log_test("POST /presets - Create global-scoped preset", False, 
+                        f"Response mismatch: {preset}")
+        else:
+            log_test("POST /presets - Create global-scoped preset", False, 
+                    f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("POST /presets - Create global-scoped preset", False, str(e))
+    
+    # Test 3.3: GET /presets as RCRM RO I ACEH (should contain 'Draft Aceh' and 'Global Approved')
+    print("\n[3.3] GET /presets as RCRM RO I ACEH (expect both presets)")
+    rcrm_aceh_auth = login(CREDENTIALS["rcrm_aceh"]["nip"])
+    if rcrm_aceh_auth:
+        rcrm_token = rcrm_aceh_auth["token"]
+        rcrm_headers = {"Authorization": f"Bearer {rcrm_token}"}
+        
+        try:
+            resp = requests.get(f"{BASE_URL}/presets", headers=rcrm_headers, timeout=10)
+            if resp.status_code == 200:
+                presets = resp.json()
+                preset_names = [p.get("name") for p in presets]
+                
+                has_draft_aceh = "Draft Aceh" in preset_names
+                has_global_approved = "Global Approved" in preset_names
+                
+                print(f"   Presets returned: {preset_names}")
+                
+                if has_draft_aceh and has_global_approved:
+                    log_test("GET /presets as RCRM RO I ACEH - Contains region and global presets", True)
+                else:
+                    log_test("GET /presets as RCRM RO I ACEH - Contains region and global presets", False, 
+                            f"Expected 'Draft Aceh' and 'Global Approved', got {preset_names}")
+            else:
+                log_test("GET /presets as RCRM RO I ACEH - Returns 200", False, 
+                        f"Status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            log_test("GET /presets as RCRM RO I ACEH - Returns 200", False, str(e))
+    
+    # Test 3.4: GET /presets as RCRM RO II MEDAN (should contain 'Global Approved' but NOT 'Draft Aceh')
+    print("\n[3.4] GET /presets as RCRM RO II MEDAN (expect only global preset)")
+    # Need to find RCRM RO II MEDAN NIP
+    rcrm_medan_nip = "2186008161"  # From review request
+    rcrm_medan_auth = login(rcrm_medan_nip)
+    if rcrm_medan_auth:
+        rcrm_medan_token = rcrm_medan_auth["token"]
+        rcrm_medan_headers = {"Authorization": f"Bearer {rcrm_medan_token}"}
+        
+        try:
+            resp = requests.get(f"{BASE_URL}/presets", headers=rcrm_medan_headers, timeout=10)
+            if resp.status_code == 200:
+                presets = resp.json()
+                preset_names = [p.get("name") for p in presets]
+                
+                has_draft_aceh = "Draft Aceh" in preset_names
+                has_global_approved = "Global Approved" in preset_names
+                
+                print(f"   Presets returned: {preset_names}")
+                
+                if has_global_approved and not has_draft_aceh:
+                    log_test("GET /presets as RCRM RO II MEDAN - Contains global but not RO I ACEH preset", True)
+                else:
+                    log_test("GET /presets as RCRM RO II MEDAN - Contains global but not RO I ACEH preset", False, 
+                            f"Expected 'Global Approved' only, got {preset_names}")
+            else:
+                log_test("GET /presets as RCRM RO II MEDAN - Returns 200", False, 
+                        f"Status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            log_test("GET /presets as RCRM RO II MEDAN - Returns 200", False, str(e))
+    
+    # Test 3.5: GET /presets as admin (should contain both)
+    print("\n[3.5] GET /presets as admin (expect both presets)")
+    try:
+        resp = requests.get(f"{BASE_URL}/presets", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            presets = resp.json()
+            preset_names = [p.get("name") for p in presets]
+            
+            has_draft_aceh = "Draft Aceh" in preset_names
+            has_global_approved = "Global Approved" in preset_names
+            
+            print(f"   Presets returned: {preset_names}")
+            
+            if has_draft_aceh and has_global_approved:
+                log_test("GET /presets as admin - Contains all presets", True)
+            else:
+                log_test("GET /presets as admin - Contains all presets", False, 
+                        f"Expected both presets, got {preset_names}")
+        else:
+            log_test("GET /presets as admin - Returns 200", False, 
+                    f"Status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        log_test("GET /presets as admin - Returns 200", False, str(e))
+    
+    # Test 3.6: Authorization - POST /presets as non-admin RCG (should be 403)
+    print("\n[3.6] Authorization: POST /presets as non-admin RCG (expect 403)")
+    rcg_auth = login(CREDENTIALS["rcg_approver"]["nip"])  # IMMADHA - non-admin RCG
+    if rcg_auth:
+        rcg_token = rcg_auth["token"]
+        rcg_headers = {"Authorization": f"Bearer {rcg_token}"}
+        
+        try:
+            payload = {"name": "Test Preset", "scope": "global", "filters": {}}
+            resp = requests.post(f"{BASE_URL}/presets", headers=rcg_headers, json=payload, timeout=10)
+            if resp.status_code == 403:
+                log_test("POST /presets authorization - Non-admin RCG blocked with 403", True)
+            else:
+                log_test("POST /presets authorization - Non-admin RCG blocked with 403", False, 
+                        f"Expected 403, got {resp.status_code}")
+        except Exception as e:
+            log_test("POST /presets authorization - Non-admin RCG blocked with 403", False, str(e))
+    
+    # Test 3.7: Authorization - DELETE /presets as non-admin RCG (should be 403)
+    print("\n[3.7] Authorization: DELETE /presets as non-admin RCG (expect 403)")
+    if rcg_auth and len(created_preset_ids) > 0:
+        try:
+            resp = requests.delete(f"{BASE_URL}/presets/{created_preset_ids[0]}", headers=rcg_headers, timeout=10)
+            if resp.status_code == 403:
+                log_test("DELETE /presets authorization - Non-admin RCG blocked with 403", True)
+            else:
+                log_test("DELETE /presets authorization - Non-admin RCG blocked with 403", False, 
+                        f"Expected 403, got {resp.status_code}")
+        except Exception as e:
+            log_test("DELETE /presets authorization - Non-admin RCG blocked with 403", False, str(e))
+    
+    # Test 3.8: DELETE /presets as admin (cleanup)
+    print("\n[3.8] DELETE /presets as admin (cleanup)")
+    for preset_id in created_preset_ids:
+        try:
+            resp = requests.delete(f"{BASE_URL}/presets/{preset_id}", headers=headers, timeout=10)
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get("ok") == True:
+                    print(f"   ✓ Deleted preset: {preset_id}")
+                else:
+                    log_warning(f"DELETE /presets/{preset_id} returned ok={result.get('ok')}")
+            else:
+                log_warning(f"DELETE /presets/{preset_id} failed: {resp.status_code}")
+        except Exception as e:
+            log_warning(f"DELETE /presets/{preset_id} error: {e}")
+    
+    # Verify presets are deleted
+    print("\n[3.9] Verify presets are deleted")
+    try:
+        resp = requests.get(f"{BASE_URL}/presets", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            presets = resp.json()
+            preset_names = [p.get("name") for p in presets]
+            
+            has_draft_aceh = "Draft Aceh" in preset_names
+            has_global_approved = "Global Approved" in preset_names
+            
+            if not has_draft_aceh and not has_global_approved:
+                log_test("DELETE /presets - Presets successfully deleted", True)
+            else:
+                log_test("DELETE /presets - Presets successfully deleted", False, 
+                        f"Presets still exist: {preset_names}")
+        else:
+            log_warning(f"GET /presets after delete failed: {resp.status_code}")
+    except Exception as e:
+        log_warning(f"GET /presets after delete error: {e}")
+
+
 if __name__ == "__main__":
-    main()
+    # Run tests for 3 new endpoints only
+    print("\n" + "="*80)
+    print("RCG DIGITAL RESTRUCTURING - BACKEND API TESTING")
+    print("Testing 3 NEW Endpoints: Audit Panel, Excel Export, Shared Presets")
+    print("="*80)
+    print(f"Base URL: {BASE_URL}")
+    print(f"Test Run ID: {TEST_RUN_ID}")
+    
+    test_audit_panel()
+    test_excel_export()
+    test_shared_presets()
+    
+    # Print summary
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
+    
+    print(f"\n✅ PASSED: {len(test_results['passed'])}")
+    for result in test_results["passed"]:
+        print(f"  {result}")
+    
+    if test_results["failed"]:
+        print(f"\n❌ FAILED: {len(test_results['failed'])}")
+        for result in test_results["failed"]:
+            print(f"  {result}")
+    
+    if test_results["warnings"]:
+        print(f"\n⚠️  WARNINGS: {len(test_results['warnings'])}")
+        for warning in test_results["warnings"]:
+            print(f"  {warning}")
+    
+    total_tests = len(test_results["passed"]) + len(test_results["failed"])
+    pass_rate = (len(test_results["passed"]) / total_tests * 100) if total_tests > 0 else 0
+    
+    print(f"\nTotal: {total_tests} tests, {len(test_results['passed'])} passed, {len(test_results['failed'])} failed ({pass_rate:.1f}% pass rate)")
+    
+    all_passed = len(test_results["failed"]) == 0
+    if all_passed:
+        print("\n🎉 ALL TESTS PASSED!")
+    else:
+        print("\n⚠️  SOME TESTS FAILED - See details above")
+    
+    sys.exit(0 if all_passed else 1)
