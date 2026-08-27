@@ -1095,6 +1095,233 @@ def test_admin_create_rcg_user():
         log_test("Admin Create RCG User", False, f"Error: {e}")
 
 
+def test_user_history():
+    """Test GET /users/{uid}/history endpoint"""
+    print("\n" + "="*80)
+    print("TEST 13: GET /users/{uid}/history - User Audit History")
+    print("="*80)
+    
+    # Login as admin
+    admin_login = login(CREDENTIALS["admin"]["nip"])
+    if not admin_login:
+        log_test("User History - Admin Access", False, "Admin login failed")
+        return None
+    
+    admin_token = admin_login["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    try:
+        # Step 1: Get list of ACRM users
+        print("\n   Step 1: Getting ACRM users...")
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("User History - Get ACRM Users", False, f"Failed to get ACRM users: {resp.status_code}")
+            return None
+        
+        acrm_users = resp.json()
+        if len(acrm_users) == 0:
+            log_test("User History - Get ACRM Users", False, "No ACRM users found")
+            return None
+        
+        # Pick first ACRM user
+        target_user = acrm_users[0]
+        user_id = target_user["id"]
+        old_limit = target_user.get("limit_pemutus", 0)
+        old_area = target_user.get("area", "")
+        old_region = target_user.get("region", "")
+        
+        print(f"   Selected user: {target_user['nama']} (NIP: {target_user['nip']})")
+        print(f"   Current - Limit: {old_limit}, Area: {old_area}, Region: {old_region}")
+        
+        # Step 2: Get list of areas to find a different one
+        print("\n   Step 2: Getting areas to find a different area...")
+        resp = requests.get(f"{BASE_URL}/areas", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("User History - Get Areas", False, f"Failed to get areas: {resp.status_code}")
+            return None
+        
+        areas = resp.json()
+        if len(areas) < 2:
+            log_test("User History - Get Areas", False, "Not enough areas to test move")
+            return None
+        
+        # Find a different area
+        new_area_obj = None
+        for area in areas:
+            if area["nama"] != old_area:
+                new_area_obj = area
+                break
+        
+        if not new_area_obj:
+            log_test("User History - Find Different Area", False, "Could not find different area")
+            return None
+        
+        new_area = new_area_obj["nama"]
+        expected_new_region = new_area_obj["region"]
+        new_limit = old_limit + 500000000  # Add 500M
+        
+        print(f"   New values - Limit: {new_limit}, Area: {new_area}, Expected Region: {expected_new_region}")
+        
+        # Step 3: Update user (change limit AND area)
+        print("\n   Step 3: Updating user (changing limit and area)...")
+        update_payload = {
+            "nama": target_user["nama"],
+            "nip": target_user["nip"],
+            "role": target_user["role"],
+            "jabatan": target_user.get("jabatan", ""),
+            "region": old_region,  # Send old region - backend should override based on new area
+            "area": new_area,
+            "limit_pemutus": new_limit,
+            "status": target_user.get("status", "aktif")
+        }
+        
+        resp = requests.put(f"{BASE_URL}/users/{user_id}", json=update_payload, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("User History - Update User", False, f"PUT failed: {resp.status_code} - {resp.text}")
+            return None
+        
+        print(f"   ✓ User updated successfully")
+        
+        # Step 4: GET /users/{uid}/history
+        print("\n   Step 4: Getting user history...")
+        resp = requests.get(f"{BASE_URL}/users/{user_id}/history", headers=headers, timeout=10)
+        
+        if resp.status_code != 200:
+            log_test("User History - GET History", False, f"GET /users/{user_id}/history failed: {resp.status_code} - {resp.text}")
+            return None
+        
+        history = resp.json()
+        
+        print(f"   ✓ History retrieved: {len(history)} entries")
+        
+        # Verify it's a list
+        if not isinstance(history, list):
+            log_test("User History - Response Type", False, f"Expected list, got {type(history)}")
+            return None
+        
+        log_test("User History - Response Type", True)
+        
+        # Verify it contains at least one entry
+        if len(history) == 0:
+            log_test("User History - Has Entries", False, "History is empty")
+            return None
+        
+        log_test("User History - Has Entries", True)
+        
+        # Find the most recent update_user entry
+        update_entries = [e for e in history if e.get("action") == "update_user"]
+        
+        if len(update_entries) == 0:
+            log_test("User History - Has update_user Entry", False, "No update_user entries found")
+            return None
+        
+        log_test("User History - Has update_user Entry", True)
+        
+        # Get the most recent update_user entry (should be first due to sort order)
+        latest_update = update_entries[0]
+        
+        print(f"\n   Latest update_user entry:")
+        print(f"   - Action: {latest_update.get('action')}")
+        print(f"   - User: {latest_update.get('nama')} (NIP: {latest_update.get('nip')})")
+        print(f"   - Created at: {latest_update.get('created_at')}")
+        
+        # Verify old_value and new_value exist
+        old_value = latest_update.get("old_value")
+        new_value = latest_update.get("new_value")
+        
+        if old_value is None:
+            log_test("User History - Has old_value", False, "old_value is missing")
+            return None
+        
+        if new_value is None:
+            log_test("User History - Has new_value", False, "new_value is missing")
+            return None
+        
+        log_test("User History - Has old_value and new_value", True)
+        
+        print(f"\n   Old values:")
+        print(f"   - Limit: {old_value.get('limit_pemutus')}")
+        print(f"   - Area: {old_value.get('area')}")
+        print(f"   - Region: {old_value.get('region')}")
+        
+        print(f"\n   New values:")
+        print(f"   - Limit: {new_value.get('limit_pemutus')}")
+        print(f"   - Area: {new_value.get('area')}")
+        print(f"   - Region: {new_value.get('region')}")
+        
+        # Verify old_value reflects the previous state
+        old_value_checks = []
+        if old_value.get("limit_pemutus") != old_limit:
+            old_value_checks.append(f"old limit mismatch: expected {old_limit}, got {old_value.get('limit_pemutus')}")
+        if old_value.get("area") != old_area:
+            old_value_checks.append(f"old area mismatch: expected {old_area}, got {old_value.get('area')}")
+        if old_value.get("region") != old_region:
+            old_value_checks.append(f"old region mismatch: expected {old_region}, got {old_value.get('region')}")
+        
+        if old_value_checks:
+            log_test("User History - old_value Accuracy", False, "; ".join(old_value_checks))
+        else:
+            log_test("User History - old_value Accuracy", True)
+        
+        # Verify new_value reflects the changes
+        new_value_checks = []
+        if new_value.get("limit_pemutus") != new_limit:
+            new_value_checks.append(f"new limit mismatch: expected {new_limit}, got {new_value.get('limit_pemutus')}")
+        if new_value.get("area") != new_area:
+            new_value_checks.append(f"new area mismatch: expected {new_area}, got {new_value.get('area')}")
+        # Note: new_value contains the update dict, which has the region that was auto-derived
+        # The backend sets region based on area lookup, so new_value.region should match expected_new_region
+        if new_value.get("region") != expected_new_region:
+            new_value_checks.append(f"new region mismatch: expected {expected_new_region}, got {new_value.get('region')}")
+        
+        if new_value_checks:
+            log_test("User History - new_value Accuracy", False, "; ".join(new_value_checks))
+        else:
+            log_test("User History - new_value Accuracy", True)
+        
+        # Verify entries are sorted by created_at descending (most recent first)
+        if len(history) > 1:
+            sorted_check = True
+            for i in range(len(history) - 1):
+                if history[i].get("created_at", "") < history[i+1].get("created_at", ""):
+                    sorted_check = False
+                    break
+            
+            if sorted_check:
+                log_test("User History - Sorted Descending", True)
+            else:
+                log_test("User History - Sorted Descending", False, "Entries not sorted by created_at desc")
+        else:
+            log_test("User History - Sorted Descending", True, "Only one entry, sort order N/A")
+        
+        # Step 5: Test authorization - RCO should get 403
+        print("\n   Step 5: Testing authorization (RCO should get 403)...")
+        rco_login = login(CREDENTIALS["rco_banda_aceh"]["nip"])
+        if not rco_login:
+            log_test("User History - RCO Authorization", False, "RCO login failed")
+            return user_id
+        
+        rco_token = rco_login["token"]
+        rco_headers = {"Authorization": f"Bearer {rco_token}"}
+        
+        resp = requests.get(f"{BASE_URL}/users/{user_id}/history", headers=rco_headers, timeout=10)
+        
+        if resp.status_code == 403:
+            print(f"   ✓ RCO correctly blocked with 403")
+            log_test("User History - RCO Authorization", True)
+        else:
+            print(f"   ✗ RCO got {resp.status_code}, expected 403")
+            log_test("User History - RCO Authorization", False, f"Expected 403, got {resp.status_code}")
+        
+        return user_id
+        
+    except Exception as e:
+        log_test("User History - Exception", False, f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def print_summary():
     """Print test summary"""
     print("\n" + "="*80)
@@ -1129,11 +1356,14 @@ def main():
     print(f"Base URL: {BASE_URL}")
     print("="*80)
     
-    # Check if we should run only admin edit user tests
+    # Check if we should run only specific tests
     import os
     test_mode = os.environ.get("TEST_MODE", "all")
     
-    if test_mode == "admin_edit_only":
+    if test_mode == "user_history_only":
+        print("\n🎯 RUNNING USER HISTORY TEST ONLY\n")
+        test_user_history()
+    elif test_mode == "admin_edit_only":
         print("\n🎯 RUNNING ADMIN EDIT USER TESTS ONLY\n")
         test_admin_edit_limit()
         test_admin_move_area()
@@ -1160,6 +1390,9 @@ def main():
         test_admin_move_area()
         test_authorization_non_admin()
         test_admin_create_rcg_user()
+        
+        # Run user history test
+        test_user_history()
     
     # Print summary
     all_passed = print_summary()

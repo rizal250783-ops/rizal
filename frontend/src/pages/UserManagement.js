@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import api, { apiError } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
 import { formatRupiah, parseNumber, formatNumberInput } from "../lib/format";
-import { Users, UserPlus, KeyRound, Trash2, Loader2, X, Pencil } from "lucide-react";
+import { Users, UserPlus, KeyRound, Trash2, Loader2, X, Pencil, History } from "lucide-react";
 import { toast } from "sonner";
 
 const EMPTY_FORM = { nama: "", nip: "", role: "RCO", jabatan: "", region: "", area: "", limit_pemutus: 0, status: "aktif" };
@@ -18,6 +18,8 @@ export default function UserManagement() {
   const [editingId, setEditingId] = useState(null);
   const [genPw, setGenPw] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [histUser, setHistUser] = useState(null);
+  const [histData, setHistData] = useState(null);
 
   const load = () => api.get("/users", { params: roleFilter ? { role: roleFilter } : {} }).then((r) => setUsers(r.data)).catch(() => setUsers([]));
   useEffect(() => { load(); }, [roleFilter]);
@@ -64,6 +66,28 @@ export default function UserManagement() {
     catch (err) { toast.error(apiError(err)); }
   };
 
+  const openHistory = async (u) => {
+    setHistUser(u); setHistData(null);
+    try { const { data } = await api.get(`/users/${u.id}/history`); setHistData(data); }
+    catch (err) { toast.error(apiError(err)); setHistData([]); }
+  };
+
+  const ACTION_LABEL = { create_user: "Dibuat", update_user: "Diubah", reset_password: "Reset Password", delete_user: "Dihapus" };
+  const FIELD_LABEL = { limit_pemutus: "Limit Pemutus", area: "Area", region: "Region", status: "Status", nama: "Nama", jabatan: "Jabatan" };
+  const fmtVal = (k, v) => {
+    if (v === null || v === undefined || v === "") return "-";
+    if (k === "limit_pemutus") return formatRupiah(v);
+    return String(v);
+  };
+  const changeList = (log) => {
+    if (log.action !== "update_user") return [];
+    const oldV = log.old_value || {}; const newV = log.new_value || {};
+    return Object.keys(FIELD_LABEL)
+      .filter((k) => k in newV && String(oldV[k] ?? "") !== String(newV[k] ?? ""))
+      .map((k) => ({ field: FIELD_LABEL[k], from: fmtVal(k, oldV[k]), to: fmtVal(k, newV[k]) }));
+  };
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleString("id-ID"); } catch { return iso; } };
+
   if (!users) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#00A0A0]" size={30} /></div>;
 
   const isAdmin = user.is_user_admin;
@@ -109,6 +133,7 @@ export default function UserManagement() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
                       {isAdmin && <button className="text-[#00A0A0] hover:bg-[#E6F6F6] p-1.5 rounded" onClick={() => openEdit(u)} title="Edit User" data-testid={`edit-${u.nip}`}><Pencil size={15} /></button>}
+                      <button className="text-slate-500 hover:bg-slate-100 p-1.5 rounded" onClick={() => openHistory(u)} title="Riwayat Perubahan" data-testid={`history-${u.nip}`}><History size={15} /></button>
                       <button className="text-[#B4842A] hover:bg-[#FDF7EB] p-1.5 rounded" onClick={() => resetPw(u)} title="Reset Password" data-testid={`reset-${u.nip}`}><KeyRound size={15} /></button>
                       {isAdmin && u.nip !== "2175007386" && <button className="text-red-500 hover:bg-red-50 p-1.5 rounded" onClick={() => del(u)} title="Hapus" data-testid={`delete-${u.nip}`}><Trash2 size={15} /></button>}
                     </div>
@@ -186,6 +211,57 @@ export default function UserManagement() {
                 <button className="w-full bg-[#00A0A0] hover:bg-[#008888] text-white font-semibold py-2.5 rounded-md text-sm mt-2" data-testid="uf-submit">{editingId ? "Simpan Perubahan" : "Simpan User"}</button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {histUser && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setHistUser(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} data-testid="history-modal">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-display font-bold text-lg flex items-center gap-2"><History size={18} className="text-[#00A0A0]" /> Riwayat Perubahan</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{histUser.nama} — NIP {histUser.nip}</p>
+              </div>
+              <button onClick={() => setHistUser(null)}><X size={20} className="text-slate-400" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {histData === null ? (
+                <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#00A0A0]" size={26} /></div>
+              ) : histData.length === 0 ? (
+                <div className="text-center text-slate-400 py-10">Belum ada riwayat perubahan untuk user ini</div>
+              ) : (
+                <ol className="relative border-l-2 border-slate-100 ml-2">
+                  {histData.map((log) => {
+                    const changes = changeList(log);
+                    return (
+                      <li key={log.id} className="mb-5 ml-4" data-testid="history-item">
+                        <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#00A0A0] border-2 border-white" />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E6F6F6] text-[#00A0A0]">{ACTION_LABEL[log.action] || log.action}</span>
+                          <span className="text-xs text-slate-400">{fmtDate(log.created_at)}</span>
+                        </div>
+                        <div className="text-sm text-slate-700 mt-1">oleh <span className="font-medium">{log.nama}</span> <span className="text-slate-400">(NIP {log.nip})</span></div>
+                        {log.action === "update_user" && (
+                          changes.length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {changes.map((c, i) => (
+                                <div key={i} className="text-xs bg-slate-50 rounded-md px-3 py-1.5 border border-slate-100">
+                                  <span className="font-semibold text-slate-600">{c.field}:</span>{" "}
+                                  <span className="text-red-500 line-through">{c.from}</span>{" "}
+                                  <span className="text-slate-400">&rarr;</span>{" "}
+                                  <span className="text-emerald-600 font-medium">{c.to}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : <div className="mt-1 text-xs text-slate-400 italic">Tidak ada perubahan field yang tercatat</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           </div>
         </div>
       )}

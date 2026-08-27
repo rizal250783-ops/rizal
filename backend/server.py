@@ -305,6 +305,15 @@ async def update_user(uid: str, req: UserReq, user: dict = Depends(require_roles
     return {"ok": True}
 
 
+@api.get("/users/{uid}/history")
+async def user_history(uid: str, user: dict = Depends(require_roles("RCG"))):
+    """Riwayat perubahan user (create/update/reset/delete) untuk transparansi audit admin."""
+    logs = await db.audit_logs.find(
+        {"entity": "user", "entity_id": uid}, NO_ID
+    ).sort("created_at", -1).to_list(200)
+    return logs
+
+
 @api.post("/users/{uid}/reset-password")
 async def reset_password(uid: str, user: dict = Depends(require_roles("RCG"))):
     pw = generate_password(8)
