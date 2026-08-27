@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
-import { ScrollText, Loader2, Search, X, Eye, Filter } from "lucide-react";
+import { ScrollText, Loader2, Search, X, Eye, Filter, ShieldAlert } from "lucide-react";
 
 const ACTION_LABEL = {
   login: "Login", create_note: "Buat Nota", update_note: "Ubah Nota", submit_note: "Submit Nota",
@@ -10,6 +10,11 @@ const ACTION_LABEL = {
   create_user: "Buat User", update_user: "Ubah User", reset_password: "Reset Password",
   delete_user: "Hapus User", export_excel: "Ekspor Excel", export_notes_excel: "Ekspor Excel",
   create_preset: "Buat Preset", delete_preset: "Hapus Preset",
+  add_holiday: "Tambah Hari Libur", delete_holiday: "Hapus Hari Libur",
+  create_region: "Tambah Region", update_region: "Ubah Region", delete_region: "Hapus Region",
+  create_area: "Tambah Area", update_area: "Ubah Area", delete_area: "Hapus Area",
+  create_branch: "Tambah Cabang", update_branch: "Ubah Cabang", delete_branch: "Hapus Cabang",
+  access_denied: "Akses Ditolak",
 };
 
 function fmtVal(v) {
@@ -39,6 +44,9 @@ export default function AuditTrail() {
 
   const activeCount = useMemo(() => Object.values(f).filter(Boolean).length, [f]);
   const reset = () => setF({ q: "", action: "", entity: "", date_from: "", date_to: "" });
+  const deniedActive = f.action === "access_denied";
+  const toggleDenied = () => setF({ ...f, action: deniedActive ? "" : "access_denied" });
+  const deniedCount = useMemo(() => (logs || []).filter((l) => l.action === "access_denied").length, [logs]);
 
   const selectCls = "px-3 py-2.5 border border-slate-300 rounded-md text-sm bg-white outline-none focus:border-[#00A0A0] focus:ring-2 focus:ring-[#00A0A0]/20";
 
@@ -51,6 +59,18 @@ export default function AuditTrail() {
   return (
     <div>
       <PageHeader title="Panel Audit Global" subtitle={logs ? `${logs.length} aktivitas` : "Memuat..."} icon={ScrollText} />
+
+      <button onClick={toggleDenied} data-testid="audit-quick-denied"
+        className={`mb-4 flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-semibold border transition-colors ${
+          deniedActive ? "bg-red-600 text-white border-red-600" : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+        }`}>
+        <ShieldAlert size={16} />
+        {deniedActive ? "Menampilkan: Percobaan Akses Ditolak" : "Sorot Percobaan Akses Ditolak"}
+        {!deniedActive && deniedCount > 0 && (
+          <span className="bg-red-600 text-white text-[11px] rounded-full px-2 py-0.5">{deniedCount}</span>
+        )}
+      </button>
+
 
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 mb-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -108,11 +128,11 @@ export default function AuditTrail() {
               <tbody data-testid="audit-table-body">
                 {logs.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-10">Tidak ada aktivitas yang cocok</td></tr>}
                 {logs.map((l) => (
-                  <tr key={l.id} className="border-b border-slate-100 hover:bg-slate-50/60">
+                  <tr key={l.id} className={`border-b border-slate-100 ${l.action === "access_denied" ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-slate-50/60"}`}>
                     <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{new Date(l.created_at).toLocaleString("id-ID")}</td>
                     <td className="px-4 py-2.5 font-medium">{l.nama}</td>
                     <td className="px-4 py-2.5 text-slate-600">{l.nip}</td>
-                    <td className="px-4 py-2.5"><span className="text-xs bg-[#E6F6F6] text-[#00A0A0] px-2 py-0.5 rounded whitespace-nowrap">{ACTION_LABEL[l.action] || l.action}</span></td>
+                    <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${l.action === "access_denied" ? "bg-red-600 text-white" : "bg-[#E6F6F6] text-[#00A0A0]"}`}>{ACTION_LABEL[l.action] || l.action}</span></td>
                     <td className="px-4 py-2.5 text-slate-500 text-xs">{l.entity}</td>
                     <td className="px-4 py-2.5 text-center">
                       {hasDetail(l) ? (

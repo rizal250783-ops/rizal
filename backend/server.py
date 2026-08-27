@@ -76,8 +76,16 @@ async def require_user_admin(request: Request, user: dict = Depends(current_user
     if user.get("role") != "RCG" or user.get("nip") != C.USER_ADMIN_NIP:
         # Catat percobaan akses fitur admin oleh user lain untuk transparansi
         try:
-            await audit(user, "access_denied", "admin_feature", request.url.path,
-                        None, {"path": request.url.path, "method": request.method})
+            path = request.url.path
+            await audit(user, "access_denied", "admin_feature", path,
+                        None, {"path": path, "method": request.method})
+            admin = await db.users.find_one({"nip": C.USER_ADMIN_NIP})
+            if admin:
+                await push_notification(
+                    admin["id"],
+                    f"Percobaan akses fitur admin ({request.method} {path}) oleh {user.get('nama')} (NIP {user.get('nip')})",
+                    pengirim=user.get("nama", ""), ntype="access_denied",
+                )
         except Exception:
             pass
         raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengakses fitur admin")
@@ -104,6 +112,17 @@ async def notify(user_ids, note, message):
         })
     if docs:
         await db.notifications.insert_many(docs)
+
+
+async def push_notification(user_id, message, pengirim="", ntype="info"):
+    """Notifikasi umum (tidak terkait nota tertentu)."""
+    d, t = now_parts()
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user_id, "note_id": "",
+        "nomor_nota": "", "nama_nasabah": "", "pengirim": pengirim,
+        "message": message, "type": ntype,
+        "tanggal": d, "jam": t, "is_read": False, "created_at": now_iso(),
+    })
 
 
 # =============================================================
@@ -189,6 +208,190 @@ async def branches(area: Optional[str] = None, user: dict = Depends(current_user
     return await db.branches.find(q, NO_ID).sort("nama_cabang", 1).to_list(2000)
 
 
+# ---- Master Data CRUD (Region / Area / Cabang) — admin only ----
+class RegionReq(BaseModel):
+    nama: str
+
+
+class AreaReq(BaseModel):
+    nama: str
+    region: str
+
+
+class BranchReq(BaseModel):
+    kode_outlet_bsi: str
+    nama_cabang: str
+    jenis_outlet: str
+    area: str
+    status: Optional[str] = "aktif"
+
+
+# Region
+@api.post("/regions")
+async def create_region(req: RegionReq, user: dict = Depends(require_user_admin)):
+    nama = req.nama.strip()
+    if not nama:
+        raise HTTPException(status_code=400, detail="Nama region wajib diisi")
+    if await db.regions.find_one({"nama": nama}):
+        raise HTTPException(status_code=400, detail="Region sudah terdaftar")
+    doc = {"id": str(uuid.uuid4()), "nama": nama}
+    await db.regions.insert_one(doc)
+    doc.pop("_id", None)
+    await audit(user, "create_region", "region", doc["id"], None, {"nama": nama})
+    return doc
+
+
+@api.put("/regions/{rid}")
+async def update_region(rid: str, req: RegionReq, user: dict = Depends(require_user_admin)):
+    target = await db.regions.find_one({"id": rid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Region tidak ditemukan")
+    nama = req.nama.strip()
+    if not nama:
+        raise HTTPException(status_code=400, detail="Nama region wajib diisi")
+    dup = await db.regions.find_one({"nama": nama, "id": {"$ne": rid}})
+    if dup:
+        raise HTTPException(status_code=400, detail="Region sudah terdaftar")
+    old_nama = target["nama"]
+    await db.regions.update_one({"id": rid}, {"$set": {"nama": nama}})
+    if nama != old_nama:
+        # Cascade nama region ke koleksi terkait
+        await db.areas.update_many({"region": old_nama}, {"$set": {"region": nama}})
+        await db.branches.update_many({"region": old_nama}, {"$set": {"region": nama}})
+        await db.users.update_many({"region": old_nama}, {"$set": {"region": nama}})
+    await audit(user, "update_region", "region", rid, {"nama": old_nama}, {"nama": nama})
+    return {"ok": True}
+
+
+@api.delete("/regions/{rid}")
+async def delete_region(rid: str, user: dict = Depends(require_user_admin)):
+    target = await db.regions.find_one({"id": rid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Region tidak ditemukan")
+    if await db.areas.find_one({"region": target["nama"]}):
+        raise HTTPException(status_code=400, detail="Region masih memiliki area, hapus/pindahkan area dulu")
+    await db.regions.delete_one({"id": rid})
+    await audit(user, "delete_region", "region", rid, {"nama": target["nama"]}, None)
+    return {"ok": True}
+
+
+# Area
+@api.post("/areas")
+async def create_area(req: AreaReq, user: dict = Depends(require_user_admin)):
+    nama = req.nama.strip()
+    region = req.region.strip()
+    if not nama or not region:
+        raise HTTPException(status_code=400, detail="Nama area & region wajib diisi")
+    rrow = await db.regions.find_one({"nama": region})
+    if not rrow:
+        raise HTTPException(status_code=400, detail="Region tidak valid")
+    if await db.areas.find_one({"nama": nama}):
+        raise HTTPException(status_code=400, detail="Area sudah terdaftar")
+    doc = {"id": str(uuid.uuid4()), "region_id": rrow["id"], "region": region, "nama": nama}
+    await db.areas.insert_one(doc)
+    doc.pop("_id", None)
+    await audit(user, "create_area", "area", doc["id"], None, {"nama": nama, "region": region})
+    return doc
+
+
+@api.put("/areas/{aid}")
+async def update_area(aid: str, req: AreaReq, user: dict = Depends(require_user_admin)):
+    target = await db.areas.find_one({"id": aid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Area tidak ditemukan")
+    nama = req.nama.strip()
+    region = req.region.strip()
+    if not nama or not region:
+        raise HTTPException(status_code=400, detail="Nama area & region wajib diisi")
+    rrow = await db.regions.find_one({"nama": region})
+    if not rrow:
+        raise HTTPException(status_code=400, detail="Region tidak valid")
+    dup = await db.areas.find_one({"nama": nama, "id": {"$ne": aid}})
+    if dup:
+        raise HTTPException(status_code=400, detail="Area sudah terdaftar")
+    old = {"nama": target["nama"], "region": target["region"]}
+    await db.areas.update_one({"id": aid}, {"$set": {"nama": nama, "region": region, "region_id": rrow["id"]}})
+    if nama != target["nama"]:
+        await db.branches.update_many({"area": target["nama"]}, {"$set": {"area": nama}})
+        await db.users.update_many({"area": target["nama"]}, {"$set": {"area": nama}})
+    # Region cabang mengikuti region area
+    await db.branches.update_many({"area": nama}, {"$set": {"region": region}})
+    await audit(user, "update_area", "area", aid, old, {"nama": nama, "region": region})
+    return {"ok": True}
+
+
+@api.delete("/areas/{aid}")
+async def delete_area(aid: str, user: dict = Depends(require_user_admin)):
+    target = await db.areas.find_one({"id": aid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Area tidak ditemukan")
+    if await db.branches.find_one({"area": target["nama"]}):
+        raise HTTPException(status_code=400, detail="Area masih memiliki cabang, hapus/pindahkan cabang dulu")
+    await db.areas.delete_one({"id": aid})
+    await audit(user, "delete_area", "area", aid, {"nama": target["nama"], "region": target["region"]}, None)
+    return {"ok": True}
+
+
+# Branch
+@api.post("/branches")
+async def create_branch(req: BranchReq, user: dict = Depends(require_user_admin)):
+    kode = req.kode_outlet_bsi.strip()
+    nama = req.nama_cabang.strip()
+    if not kode or not nama:
+        raise HTTPException(status_code=400, detail="Kode outlet & nama cabang wajib diisi")
+    arow = await db.areas.find_one({"nama": req.area.strip()})
+    if not arow:
+        raise HTTPException(status_code=400, detail="Area tidak valid")
+    if await db.branches.find_one({"kode_outlet_bsi": kode}):
+        raise HTTPException(status_code=400, detail="Kode outlet sudah terdaftar")
+    doc = {
+        "id": str(uuid.uuid4()), "kode_outlet_bsi": kode, "nama_cabang": nama,
+        "jenis_outlet": req.jenis_outlet.strip(), "area": arow["nama"], "region": arow["region"],
+        "status": req.status or "aktif",
+    }
+    await db.branches.insert_one(doc)
+    doc.pop("_id", None)
+    await audit(user, "create_branch", "branch", doc["id"], None,
+                {"kode_outlet_bsi": kode, "nama_cabang": nama, "area": arow["nama"]})
+    return doc
+
+
+@api.put("/branches/{bid}")
+async def update_branch(bid: str, req: BranchReq, user: dict = Depends(require_user_admin)):
+    target = await db.branches.find_one({"id": bid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Cabang tidak ditemukan")
+    kode = req.kode_outlet_bsi.strip()
+    nama = req.nama_cabang.strip()
+    if not kode or not nama:
+        raise HTTPException(status_code=400, detail="Kode outlet & nama cabang wajib diisi")
+    arow = await db.areas.find_one({"nama": req.area.strip()})
+    if not arow:
+        raise HTTPException(status_code=400, detail="Area tidak valid")
+    dup = await db.branches.find_one({"kode_outlet_bsi": kode, "id": {"$ne": bid}})
+    if dup:
+        raise HTTPException(status_code=400, detail="Kode outlet sudah terdaftar")
+    old = {"kode_outlet_bsi": target["kode_outlet_bsi"], "nama_cabang": target["nama_cabang"],
+           "jenis_outlet": target.get("jenis_outlet"), "area": target["area"]}
+    upd = {"kode_outlet_bsi": kode, "nama_cabang": nama, "jenis_outlet": req.jenis_outlet.strip(),
+           "area": arow["nama"], "region": arow["region"], "status": req.status or target.get("status", "aktif")}
+    await db.branches.update_one({"id": bid}, {"$set": upd})
+    await audit(user, "update_branch", "branch", bid, old, upd)
+    return {"ok": True}
+
+
+@api.delete("/branches/{bid}")
+async def delete_branch(bid: str, user: dict = Depends(require_user_admin)):
+    target = await db.branches.find_one({"id": bid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Cabang tidak ditemukan")
+    await db.branches.delete_one({"id": bid})
+    await audit(user, "delete_branch", "branch", bid,
+                {"kode_outlet_bsi": target["kode_outlet_bsi"], "nama_cabang": target["nama_cabang"]}, None)
+    return {"ok": True}
+
+
+
 # ---- Holidays ----
 class HolidayReq(BaseModel):
     tanggal: str
@@ -213,9 +416,20 @@ async def add_holiday(req: HolidayReq, user: dict = Depends(require_user_admin))
 
 @api.delete("/holidays/{hid}")
 async def del_holiday(hid: str, user: dict = Depends(require_user_admin)):
+    target = await db.holidays.find_one({"id": hid}, NO_ID)
     await db.holidays.delete_one({"id": hid})
-    await audit(user, "delete_holiday", "holiday", hid)
+    await audit(user, "delete_holiday", "holiday", hid,
+                {"tanggal": target.get("tanggal"), "keterangan": target.get("keterangan")} if target else None, None)
     return {"ok": True}
+
+
+@api.get("/holidays/history")
+async def holidays_history(user: dict = Depends(require_user_admin)):
+    """Riwayat penambahan/penghapusan hari libur (siapa & kapan)."""
+    logs = await db.audit_logs.find(
+        {"entity": "holiday"}, NO_ID
+    ).sort("created_at", -1).to_list(300)
+    return logs
 
 
 # =============================================================

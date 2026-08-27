@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
 """
-Test suite for RCG Digital Restructuring - User Management Restriction
-Testing that ONLY SYAMSU RIZAL (NIP 2183008345) can manage users.
+Backend test for RCG Digital Restructuring - Master Data CRUD, Holiday History, and Access-Denied Notifications
+Test all scenarios from the review request.
 """
 import requests
 import json
 from typing import Optional
 
-# Backend URL from frontend/.env
+# Configuration
 BASE_URL = "https://github-import-setup-4.preview.emergentagent.com/api"
+DEFAULT_PASSWORD = "bsi12345"
 
-# Test credentials (all passwords: bsi12345)
-SYAMSU_RIZAL = {"nip": "2183008345", "password": "bsi12345", "name": "SYAMSU RIZAL", "role": "RCG", "is_admin": True}
-RATMIYATI = {"nip": "2180007674", "password": "bsi12345", "name": "RATMIYATI", "role": "RCG", "is_admin": False}
-IMMADHA = {"nip": "2175007386", "password": "bsi12345", "name": "IMMADHA", "role": "RCG", "is_admin": False}
-RCRM_USER = {"nip": "2188017223", "password": "bsi12345", "name": "RCRM User", "role": "RCRM", "is_admin": False}
+# Test users
+ADMIN_NIP = "2183008345"  # SYAMSU RIZAL (RCG admin)
+NON_ADMIN_RCG_NIP = "2180007674"  # RATMIYATI (RCG non-admin)
+RCRM_NIP = "2188017223"  # RCRM user
 
-def login(nip: str, password: str) -> Optional[str]:
-    """Login and return token."""
+# Test data storage
+test_data = {
+    "region_id": None,
+    "area_id": None,
+    "branch_id": None,
+    "holiday_id": None,
+    "cascade_region_id": None,
+    "cascade_area_id": None,
+    "cascade_branch_id": None,
+}
+
+def login(nip: str, password: str = DEFAULT_PASSWORD) -> Optional[str]:
+    """Login and return token"""
     try:
         resp = requests.post(f"{BASE_URL}/auth/login", json={"nip": nip, "password": password}, timeout=10)
         if resp.status_code == 200:
@@ -30,318 +41,519 @@ def login(nip: str, password: str) -> Optional[str]:
         print(f"❌ Login exception for NIP {nip}: {e}")
         return None
 
-def test_get_users(token: str, user_name: str, expected_status: int) -> bool:
-    """Test GET /api/users endpoint."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.get(f"{BASE_URL}/users", headers=headers, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status == 200:
-                users = resp.json()
-                print(f"✅ GET /users as {user_name}: {resp.status_code} (returned {len(users)} users)")
-            else:
-                print(f"✅ GET /users as {user_name}: {resp.status_code} (correctly blocked)")
-            return True
-        else:
-            print(f"❌ GET /users as {user_name}: Expected {expected_status}, got {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ GET /users as {user_name} exception: {e}")
+def headers(token: str) -> dict:
+    """Return authorization headers"""
+    return {"Authorization": f"Bearer {token}"}
+
+def test_case(num: str, description: str, passed: bool, details: str = ""):
+    """Print test case result"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"\n{status} - Case {num}: {description}")
+    if details:
+        print(f"  Details: {details}")
+
+# ============================================================
+# PART 1 - Region CRUD (as SYAMSU RIZAL)
+# ============================================================
+def test_part1_region_crud():
+    print("\n" + "="*80)
+    print("PART 1 - REGION CRUD (as SYAMSU RIZAL)")
+    print("="*80)
+    
+    token = login(ADMIN_NIP)
+    if not token:
+        print("❌ CRITICAL: Cannot login as admin")
         return False
-
-def test_create_user(token: str, user_name: str, expected_status: int) -> tuple[bool, Optional[str]]:
-    """Test POST /api/users endpoint. Returns (success, created_user_id)."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        # Create a test user with unique NIP
-        import random
-        test_nip = f"9999{random.randint(100000, 999999)}"
-        payload = {
-            "nama": f"Test User {test_nip}",
-            "nip": test_nip,
-            "role": "RCO",
-            "jabatan": "Test Officer",
-            "area": "Area Banda Aceh",
-            "region": "RO I ACEH",
-            "limit_pemutus": 0,
-            "status": "aktif"
-        }
-        resp = requests.post(f"{BASE_URL}/users", headers=headers, json=payload, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status in (200, 201):
-                data = resp.json()
-                user_id = data.get("user", {}).get("id")
-                print(f"✅ POST /users as {user_name}: {resp.status_code} (created user {test_nip}, id={user_id})")
-                return True, user_id
-            else:
-                print(f"✅ POST /users as {user_name}: {resp.status_code} (correctly blocked)")
-                return True, None
-        else:
-            print(f"❌ POST /users as {user_name}: Expected {expected_status}, got {resp.status_code} - {resp.text}")
-            return False, None
-    except Exception as e:
-        print(f"❌ POST /users as {user_name} exception: {e}")
-        return False, None
-
-def test_update_user(token: str, user_name: str, user_id: str, expected_status: int) -> bool:
-    """Test PUT /api/users/{uid} endpoint."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        payload = {
-            "nama": "Updated Test User",
-            "nip": "9999999999",  # Will be ignored (NIP is immutable)
-            "role": "RCO",
-            "jabatan": "Updated Officer",
-            "area": "Area Medan Kota",
-            "region": "RO II MEDAN",
-            "limit_pemutus": 0,
-            "status": "aktif"
-        }
-        resp = requests.put(f"{BASE_URL}/users/{user_id}", headers=headers, json=payload, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status == 200:
-                print(f"✅ PUT /users/{user_id} as {user_name}: {resp.status_code} (updated successfully)")
-            else:
-                print(f"✅ PUT /users/{user_id} as {user_name}: {resp.status_code} (correctly blocked)")
-            return True
-        else:
-            print(f"❌ PUT /users/{user_id} as {user_name}: Expected {expected_status}, got {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ PUT /users/{user_id} as {user_name} exception: {e}")
+    
+    h = headers(token)
+    
+    # Case 1: POST /api/regions {"nama":"RO TEST ZONE"} → expect 200
+    print("\n--- Case 1: Create region 'RO TEST ZONE' ---")
+    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO TEST ZONE"}, headers=h, timeout=10)
+    if resp.status_code == 200:
+        data = resp.json()
+        test_data["region_id"] = data.get("id")
+        test_case("1", "POST /api/regions 'RO TEST ZONE'", True, f"Status: {resp.status_code}, ID: {test_data['region_id']}")
+    else:
+        test_case("1", "POST /api/regions 'RO TEST ZONE'", False, f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
         return False
+    
+    # Case 2: POST /api/regions {"nama":"RO TEST ZONE"} again → expect 400 (duplicate)
+    print("\n--- Case 2: Create duplicate region 'RO TEST ZONE' ---")
+    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO TEST ZONE"}, headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("2", "POST /api/regions duplicate 'RO TEST ZONE'", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 3: PUT /api/regions/{id} {"nama":"RO TEST ZONE 2"} → expect 200 (rename)
+    print("\n--- Case 3: Rename region to 'RO TEST ZONE 2' ---")
+    resp = requests.put(f"{BASE_URL}/regions/{test_data['region_id']}", 
+                       json={"nama": "RO TEST ZONE 2"}, headers=h, timeout=10)
+    passed = resp.status_code == 200
+    test_case("3", "PUT /api/regions rename to 'RO TEST ZONE 2'", passed, 
+              f"Status: {resp.status_code}, Expected: 200")
+    
+    return True
 
-def test_get_user_history(token: str, user_name: str, user_id: str, expected_status: int) -> bool:
-    """Test GET /api/users/{uid}/history endpoint."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.get(f"{BASE_URL}/users/{user_id}/history", headers=headers, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status == 200:
-                history = resp.json()
-                print(f"✅ GET /users/{user_id}/history as {user_name}: {resp.status_code} (returned {len(history)} entries)")
-            else:
-                print(f"✅ GET /users/{user_id}/history as {user_name}: {resp.status_code} (correctly blocked)")
-            return True
-        else:
-            print(f"❌ GET /users/{user_id}/history as {user_name}: Expected {expected_status}, got {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ GET /users/{user_id}/history as {user_name} exception: {e}")
+# ============================================================
+# PART 2 - Area CRUD (as SYAMSU RIZAL)
+# ============================================================
+def test_part2_area_crud():
+    print("\n" + "="*80)
+    print("PART 2 - AREA CRUD (as SYAMSU RIZAL)")
+    print("="*80)
+    
+    token = login(ADMIN_NIP)
+    if not token:
+        print("❌ CRITICAL: Cannot login as admin")
         return False
-
-def test_reset_password(token: str, user_name: str, user_id: str, expected_status: int) -> bool:
-    """Test POST /api/users/{uid}/reset-password endpoint."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.post(f"{BASE_URL}/users/{user_id}/reset-password", headers=headers, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status == 200:
-                data = resp.json()
-                new_pw = data.get("generated_password", "N/A")
-                print(f"✅ POST /users/{user_id}/reset-password as {user_name}: {resp.status_code} (new password: {new_pw})")
-            else:
-                print(f"✅ POST /users/{user_id}/reset-password as {user_name}: {resp.status_code} (correctly blocked)")
-            return True
-        else:
-            print(f"❌ POST /users/{user_id}/reset-password as {user_name}: Expected {expected_status}, got {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ POST /users/{user_id}/reset-password as {user_name} exception: {e}")
+    
+    h = headers(token)
+    
+    # Case 4: POST /api/areas {"nama":"Area Test A","region":"RO TEST ZONE 2"} → expect 200
+    print("\n--- Case 4: Create area 'Area Test A' under 'RO TEST ZONE 2' ---")
+    resp = requests.post(f"{BASE_URL}/areas", 
+                        json={"nama": "Area Test A", "region": "RO TEST ZONE 2"}, 
+                        headers=h, timeout=10)
+    if resp.status_code == 200:
+        data = resp.json()
+        test_data["area_id"] = data.get("id")
+        test_case("4", "POST /api/areas 'Area Test A'", True, 
+                 f"Status: {resp.status_code}, ID: {test_data['area_id']}")
+    else:
+        test_case("4", "POST /api/areas 'Area Test A'", False, 
+                 f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
         return False
+    
+    # Case 5: POST /api/areas {"nama":"Area Test A","region":"RO TEST ZONE 2"} again → expect 400 (duplicate)
+    print("\n--- Case 5: Create duplicate area 'Area Test A' ---")
+    resp = requests.post(f"{BASE_URL}/areas", 
+                        json={"nama": "Area Test A", "region": "RO TEST ZONE 2"}, 
+                        headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("5", "POST /api/areas duplicate 'Area Test A'", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 6: POST /api/areas {"nama":"Area Test B","region":"REGION TIDAK ADA"} → expect 400 (invalid region)
+    print("\n--- Case 6: Create area with invalid region ---")
+    resp = requests.post(f"{BASE_URL}/areas", 
+                        json={"nama": "Area Test B", "region": "REGION TIDAK ADA"}, 
+                        headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("6", "POST /api/areas with invalid region", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    return True
 
-def test_delete_user(token: str, user_name: str, user_id: str, expected_status: int) -> bool:
-    """Test DELETE /api/users/{uid} endpoint."""
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.delete(f"{BASE_URL}/users/{user_id}", headers=headers, timeout=10)
-        if resp.status_code == expected_status:
-            if expected_status == 200:
-                print(f"✅ DELETE /users/{user_id} as {user_name}: {resp.status_code} (deleted successfully)")
-            else:
-                print(f"✅ DELETE /users/{user_id} as {user_name}: {resp.status_code} (correctly blocked)")
-            return True
-        else:
-            print(f"❌ DELETE /users/{user_id} as {user_name}: Expected {expected_status}, got {resp.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ DELETE /users/{user_id} as {user_name} exception: {e}")
+# ============================================================
+# PART 3 - Branch CRUD (as SYAMSU RIZAL)
+# ============================================================
+def test_part3_branch_crud():
+    print("\n" + "="*80)
+    print("PART 3 - BRANCH CRUD (as SYAMSU RIZAL)")
+    print("="*80)
+    
+    token = login(ADMIN_NIP)
+    if not token:
+        print("❌ CRITICAL: Cannot login as admin")
         return False
+    
+    h = headers(token)
+    
+    # Case 7: POST /api/branches → expect 200
+    print("\n--- Case 7: Create branch 'KC TEST SATU' ---")
+    resp = requests.post(f"{BASE_URL}/branches", 
+                        json={
+                            "kode_outlet_bsi": "TST0001",
+                            "nama_cabang": "KC TEST SATU",
+                            "jenis_outlet": "KC",
+                            "area": "Area Test A"
+                        }, 
+                        headers=h, timeout=10)
+    if resp.status_code == 200:
+        data = resp.json()
+        test_data["branch_id"] = data.get("id")
+        test_case("7", "POST /api/branches 'KC TEST SATU'", True, 
+                 f"Status: {resp.status_code}, ID: {test_data['branch_id']}")
+    else:
+        test_case("7", "POST /api/branches 'KC TEST SATU'", False, 
+                 f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
+        return False
+    
+    # Case 8: POST /api/branches with same kode_outlet_bsi "TST0001" → expect 400 (duplicate kode)
+    print("\n--- Case 8: Create branch with duplicate kode_outlet_bsi ---")
+    resp = requests.post(f"{BASE_URL}/branches", 
+                        json={
+                            "kode_outlet_bsi": "TST0001",
+                            "nama_cabang": "KC TEST DUA",
+                            "jenis_outlet": "KC",
+                            "area": "Area Test A"
+                        }, 
+                        headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("8", "POST /api/branches duplicate kode_outlet_bsi", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 9: POST /api/branches with invalid area → expect 400
+    print("\n--- Case 9: Create branch with invalid area ---")
+    resp = requests.post(f"{BASE_URL}/branches", 
+                        json={
+                            "kode_outlet_bsi": "TST0002",
+                            "nama_cabang": "X",
+                            "jenis_outlet": "KC",
+                            "area": "Area Tidak Ada"
+                        }, 
+                        headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("9", "POST /api/branches with invalid area", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 10: PUT /api/branches/{id} → expect 200
+    print("\n--- Case 10: Update branch 'KC TEST SATU EDIT' ---")
+    resp = requests.put(f"{BASE_URL}/branches/{test_data['branch_id']}", 
+                       json={
+                           "kode_outlet_bsi": "TST0001",
+                           "nama_cabang": "KC TEST SATU EDIT",
+                           "jenis_outlet": "KCP",
+                           "area": "Area Test A"
+                       }, 
+                       headers=h, timeout=10)
+    passed = resp.status_code == 200
+    test_case("10", "PUT /api/branches update to 'KC TEST SATU EDIT'", passed, 
+              f"Status: {resp.status_code}, Expected: 200")
+    
+    return True
 
-def run_test_suite():
-    """Run all user management restriction tests."""
-    print("=" * 80)
-    print("USER MANAGEMENT RESTRICTION TEST SUITE")
-    print("Testing that ONLY SYAMSU RIZAL (NIP 2183008345) can manage users")
-    print("=" * 80)
+# ============================================================
+# PART 4 - Cascade & delete guards (as SYAMSU RIZAL)
+# ============================================================
+def test_part4_cascade_and_guards():
+    print("\n" + "="*80)
+    print("PART 4 - CASCADE & DELETE GUARDS (as SYAMSU RIZAL)")
+    print("="*80)
+    
+    token = login(ADMIN_NIP)
+    if not token:
+        print("❌ CRITICAL: Cannot login as admin")
+        return False
+    
+    h = headers(token)
+    
+    # Case 11: DELETE /api/regions/{RO TEST ZONE 2 id} while it still has "Area Test A" → expect 400
+    print("\n--- Case 11: Try to delete region that still has areas ---")
+    resp = requests.delete(f"{BASE_URL}/regions/{test_data['region_id']}", headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("11", "DELETE region with existing areas (guard)", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 12: DELETE /api/areas/{Area Test A id} while it still has branch → expect 400
+    print("\n--- Case 12: Try to delete area that still has branches ---")
+    resp = requests.delete(f"{BASE_URL}/areas/{test_data['area_id']}", headers=h, timeout=10)
+    passed = resp.status_code == 400
+    test_case("12", "DELETE area with existing branches (guard)", passed, 
+              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
+    
+    # Case 13: Cleanup + cascade verification
+    print("\n--- Case 13: Cleanup - delete branch, then area, then region ---")
+    
+    # Delete branch
+    resp = requests.delete(f"{BASE_URL}/branches/{test_data['branch_id']}", headers=h, timeout=10)
+    passed_branch = resp.status_code == 200
+    print(f"  13a. DELETE branch: Status {resp.status_code}, Expected: 200 - {'✅' if passed_branch else '❌'}")
+    
+    # Verify area still exists
+    resp = requests.get(f"{BASE_URL}/areas?region=RO TEST ZONE 2", headers=h, timeout=10)
+    areas = resp.json() if resp.status_code == 200 else []
+    area_exists = any(a.get("nama") == "Area Test A" for a in areas)
+    print(f"  13b. GET /api/areas?region=RO TEST ZONE 2: Area Test A exists: {area_exists} - {'✅' if area_exists else '❌'}")
+    
+    # Delete area
+    resp = requests.delete(f"{BASE_URL}/areas/{test_data['area_id']}", headers=h, timeout=10)
+    passed_area = resp.status_code == 200
+    print(f"  13c. DELETE area: Status {resp.status_code}, Expected: 200 - {'✅' if passed_area else '❌'}")
+    
+    # Delete region
+    resp = requests.delete(f"{BASE_URL}/regions/{test_data['region_id']}", headers=h, timeout=10)
+    passed_region = resp.status_code == 200
+    print(f"  13d. DELETE region: Status {resp.status_code}, Expected: 200 - {'✅' if passed_region else '❌'}")
+    
+    passed = passed_branch and area_exists and passed_area and passed_region
+    test_case("13", "Cleanup cascade verification", passed, 
+              f"Branch deleted: {passed_branch}, Area persisted: {area_exists}, Area deleted: {passed_area}, Region deleted: {passed_region}")
+    
+    # Case 14: Rename cascade check
+    print("\n--- Case 14: Rename cascade check ---")
+    
+    # Create region "RO CAS"
+    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO CAS"}, headers=h, timeout=10)
+    if resp.status_code == 200:
+        test_data["cascade_region_id"] = resp.json().get("id")
+        print(f"  14a. Created region 'RO CAS': ID {test_data['cascade_region_id']} - ✅")
+    else:
+        print(f"  14a. Failed to create region 'RO CAS': {resp.status_code} - ❌")
+        return False
+    
+    # Create area "Area Cas" under "RO CAS"
+    resp = requests.post(f"{BASE_URL}/areas", 
+                        json={"nama": "Area Cas", "region": "RO CAS"}, 
+                        headers=h, timeout=10)
+    if resp.status_code == 200:
+        test_data["cascade_area_id"] = resp.json().get("id")
+        print(f"  14b. Created area 'Area Cas': ID {test_data['cascade_area_id']} - ✅")
+    else:
+        print(f"  14b. Failed to create area 'Area Cas': {resp.status_code} - ❌")
+        return False
+    
+    # Create branch "CAS001" under "Area Cas"
+    resp = requests.post(f"{BASE_URL}/branches", 
+                        json={
+                            "kode_outlet_bsi": "CAS001",
+                            "nama_cabang": "KC CAS TEST",
+                            "jenis_outlet": "KC",
+                            "area": "Area Cas"
+                        }, 
+                        headers=h, timeout=10)
+    if resp.status_code == 200:
+        test_data["cascade_branch_id"] = resp.json().get("id")
+        print(f"  14c. Created branch 'CAS001': ID {test_data['cascade_branch_id']} - ✅")
+    else:
+        print(f"  14c. Failed to create branch 'CAS001': {resp.status_code} - ❌")
+        return False
+    
+    # Rename region to "RO CAS 2"
+    resp = requests.put(f"{BASE_URL}/regions/{test_data['cascade_region_id']}", 
+                       json={"nama": "RO CAS 2"}, headers=h, timeout=10)
+    passed_rename = resp.status_code == 200
+    print(f"  14d. Renamed region to 'RO CAS 2': Status {resp.status_code} - {'✅' if passed_rename else '❌'}")
+    
+    # Verify area.region updated
+    resp = requests.get(f"{BASE_URL}/areas?region=RO CAS 2", headers=h, timeout=10)
+    areas = resp.json() if resp.status_code == 200 else []
+    area_updated = any(a.get("nama") == "Area Cas" for a in areas)
+    print(f"  14e. GET /api/areas?region=RO CAS 2: Area Cas found: {area_updated} - {'✅' if area_updated else '❌'}")
+    
+    # Verify branch.region updated
+    resp = requests.get(f"{BASE_URL}/branches?area=Area Cas", headers=h, timeout=10)
+    branches = resp.json() if resp.status_code == 200 else []
+    branch_updated = False
+    if branches:
+        for b in branches:
+            if b.get("kode_outlet_bsi") == "CAS001":
+                branch_updated = b.get("region") == "RO CAS 2"
+                print(f"  14f. Branch CAS001 region: {b.get('region')} (expected: RO CAS 2) - {'✅' if branch_updated else '❌'}")
+                break
+    
+    # Cleanup cascade test data
+    requests.delete(f"{BASE_URL}/branches/{test_data['cascade_branch_id']}", headers=h, timeout=10)
+    requests.delete(f"{BASE_URL}/areas/{test_data['cascade_area_id']}", headers=h, timeout=10)
+    requests.delete(f"{BASE_URL}/regions/{test_data['cascade_region_id']}", headers=h, timeout=10)
+    print(f"  14g. Cleanup cascade test data - ✅")
+    
+    passed = passed_rename and area_updated and branch_updated
+    test_case("14", "Rename cascade check", passed, 
+              f"Region renamed: {passed_rename}, Area region updated: {area_updated}, Branch region updated: {branch_updated}")
+    
+    return True
+
+# ============================================================
+# PART 5 - Holiday history
+# ============================================================
+def test_part5_holiday_history():
+    print("\n" + "="*80)
+    print("PART 5 - HOLIDAY HISTORY (as SYAMSU RIZAL)")
+    print("="*80)
+    
+    token = login(ADMIN_NIP)
+    if not token:
+        print("❌ CRITICAL: Cannot login as admin")
+        return False
+    
+    h = headers(token)
+    
+    # Case 15: POST holiday, GET history, DELETE holiday, verify history
+    print("\n--- Case 15: Holiday history verification ---")
+    
+    # POST holiday
+    resp = requests.post(f"{BASE_URL}/holidays", 
+                        json={"tanggal": "2025-12-31", "keterangan": "Uji Riwayat"}, 
+                        headers=h, timeout=10)
+    if resp.status_code == 200:
+        test_data["holiday_id"] = resp.json().get("id")
+        print(f"  15a. POST /api/holidays: Status {resp.status_code}, ID {test_data['holiday_id']} - ✅")
+    else:
+        print(f"  15a. POST /api/holidays failed: Status {resp.status_code} - ❌")
+        test_case("15", "Holiday history", False, f"Failed to create holiday: {resp.status_code}")
+        return False
+    
+    # GET history - should contain add_holiday
+    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h, timeout=10)
+    if resp.status_code == 200:
+        history = resp.json()
+        add_entry = any(h.get("action") == "add_holiday" and h.get("entity_id") == test_data["holiday_id"] 
+                       for h in history)
+        print(f"  15b. GET /api/holidays/history: Status {resp.status_code}, Contains add_holiday: {add_entry} - {'✅' if add_entry else '❌'}")
+    else:
+        print(f"  15b. GET /api/holidays/history failed: Status {resp.status_code} - ❌")
+        add_entry = False
+    
+    # DELETE holiday
+    resp = requests.delete(f"{BASE_URL}/holidays/{test_data['holiday_id']}", headers=h, timeout=10)
+    delete_success = resp.status_code == 200
+    print(f"  15c. DELETE /api/holidays: Status {resp.status_code} - {'✅' if delete_success else '❌'}")
+    
+    # GET history - should now also contain delete_holiday
+    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h, timeout=10)
+    if resp.status_code == 200:
+        history = resp.json()
+        delete_entry = any(h.get("action") == "delete_holiday" and h.get("entity_id") == test_data["holiday_id"] 
+                          for h in history)
+        print(f"  15d. GET /api/holidays/history: Contains delete_holiday: {delete_entry} - {'✅' if delete_entry else '❌'}")
+    else:
+        print(f"  15d. GET /api/holidays/history failed: Status {resp.status_code} - ❌")
+        delete_entry = False
+    
+    passed = add_entry and delete_success and delete_entry
+    test_case("15", "Holiday history", passed, 
+              f"Add entry found: {add_entry}, Delete success: {delete_success}, Delete entry found: {delete_entry}")
+    
+    return True
+
+# ============================================================
+# PART 6 - Admin-only enforcement + access-denied NOTIFICATION
+# ============================================================
+def test_part6_admin_only_and_notifications():
+    print("\n" + "="*80)
+    print("PART 6 - ADMIN-ONLY ENFORCEMENT + ACCESS-DENIED NOTIFICATION")
+    print("="*80)
+    
+    # Case 16: Non-admin attempts
+    print("\n--- Case 16: Non-admin access attempts ---")
+    
+    # RATMIYATI (non-admin RCG)
+    token_ratmiyati = login(NON_ADMIN_RCG_NIP)
+    if not token_ratmiyati:
+        print("❌ CRITICAL: Cannot login as RATMIYATI")
+        return False
+    
+    h_ratmiyati = headers(token_ratmiyati)
+    
+    # POST /api/regions
+    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "TEST"}, headers=h_ratmiyati, timeout=10)
+    passed_regions = resp.status_code == 403
+    print(f"  16a. RATMIYATI POST /api/regions: Status {resp.status_code}, Expected: 403 - {'✅' if passed_regions else '❌'}")
+    
+    # POST /api/areas
+    resp = requests.post(f"{BASE_URL}/areas", json={"nama": "TEST", "region": "RO I ACEH"}, headers=h_ratmiyati, timeout=10)
+    passed_areas = resp.status_code == 403
+    print(f"  16b. RATMIYATI POST /api/areas: Status {resp.status_code}, Expected: 403 - {'✅' if passed_areas else '❌'}")
+    
+    # POST /api/branches
+    resp = requests.post(f"{BASE_URL}/branches", 
+                        json={"kode_outlet_bsi": "X", "nama_cabang": "X", "jenis_outlet": "KC", "area": "Area Banda Aceh"}, 
+                        headers=h_ratmiyati, timeout=10)
+    passed_branches = resp.status_code == 403
+    print(f"  16c. RATMIYATI POST /api/branches: Status {resp.status_code}, Expected: 403 - {'✅' if passed_branches else '❌'}")
+    
+    # GET /api/holidays/history
+    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h_ratmiyati, timeout=10)
+    passed_history = resp.status_code == 403
+    print(f"  16d. RATMIYATI GET /api/holidays/history: Status {resp.status_code}, Expected: 403 - {'✅' if passed_history else '❌'}")
+    
+    # Case 17: RCRM user
+    print("\n--- Case 17: RCRM user access attempt ---")
+    
+    token_rcrm = login(RCRM_NIP)
+    if not token_rcrm:
+        print("❌ CRITICAL: Cannot login as RCRM")
+        return False
+    
+    h_rcrm = headers(token_rcrm)
+    
+    # POST /api/regions
+    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "TEST"}, headers=h_rcrm, timeout=10)
+    passed_rcrm = resp.status_code == 403
+    print(f"  17. RCRM POST /api/regions: Status {resp.status_code}, Expected: 403 - {'✅' if passed_rcrm else '❌'}")
+    
+    # Case 18: Verify access-denied notifications
+    print("\n--- Case 18: Verify access-denied notifications ---")
+    
+    token_admin = login(ADMIN_NIP)
+    if not token_admin:
+        print("❌ CRITICAL: Cannot login as admin")
+        return False
+    
+    h_admin = headers(token_admin)
+    
+    # GET /api/notifications
+    resp = requests.get(f"{BASE_URL}/notifications", headers=h_admin, timeout=10)
+    if resp.status_code == 200:
+        data = resp.json()
+        items = data.get("items", [])
+        access_denied_notifs = [n for n in items if n.get("type") == "access_denied" 
+                               and "Percobaan akses fitur admin" in n.get("message", "")]
+        
+        print(f"  18. GET /api/notifications: Status {resp.status_code}, Total notifications: {len(items)}")
+        print(f"      Access-denied notifications found: {len(access_denied_notifs)}")
+        
+        if access_denied_notifs:
+            print(f"      Sample notification: {access_denied_notifs[0].get('message', '')}")
+            passed_notif = True
+        else:
+            print(f"      ❌ No access-denied notifications found")
+            passed_notif = False
+    else:
+        print(f"  18. GET /api/notifications failed: Status {resp.status_code} - ❌")
+        passed_notif = False
+    
+    passed = (passed_regions and passed_areas and passed_branches and passed_history and 
+              passed_rcrm and passed_notif)
+    test_case("16-18", "Admin-only enforcement + access-denied notifications", passed, 
+              f"All 403 checks: {passed_regions and passed_areas and passed_branches and passed_history and passed_rcrm}, Notifications: {passed_notif}")
+    
+    return True
+
+# ============================================================
+# MAIN TEST EXECUTION
+# ============================================================
+def main():
+    print("\n" + "="*80)
+    print("RCG DIGITAL RESTRUCTURING - MASTER DATA CRUD & HOLIDAY HISTORY TEST")
+    print("="*80)
+    print(f"Base URL: {BASE_URL}")
+    print(f"Admin NIP: {ADMIN_NIP}")
+    print(f"Non-admin RCG NIP: {NON_ADMIN_RCG_NIP}")
+    print(f"RCRM NIP: {RCRM_NIP}")
     
     results = []
     
-    # ========== TEST CASE A: SYAMSU RIZAL (Admin) - Should have full access ==========
-    print("\n" + "=" * 80)
-    print("TEST CASE A: SYAMSU RIZAL (NIP 2183008345, RCG, is_user_admin=true)")
-    print("Expected: All 6 endpoints should return 200/201 (full access)")
-    print("=" * 80)
+    # Run all test parts
+    results.append(("PART 1 - Region CRUD", test_part1_region_crud()))
+    results.append(("PART 2 - Area CRUD", test_part2_area_crud()))
+    results.append(("PART 3 - Branch CRUD", test_part3_branch_crud()))
+    results.append(("PART 4 - Cascade & Guards", test_part4_cascade_and_guards()))
+    results.append(("PART 5 - Holiday History", test_part5_holiday_history()))
+    results.append(("PART 6 - Admin-only & Notifications", test_part6_admin_only_and_notifications()))
     
-    admin_token = login(SYAMSU_RIZAL["nip"], SYAMSU_RIZAL["password"])
-    if not admin_token:
-        print("❌ CRITICAL: Failed to login as SYAMSU RIZAL")
-        return
-    
-    # A1: GET /users
-    results.append(("A1: GET /users (admin)", test_get_users(admin_token, SYAMSU_RIZAL["name"], 200)))
-    
-    # A2: POST /users (create test user)
-    success, created_user_id = test_create_user(admin_token, SYAMSU_RIZAL["name"], 200)
-    results.append(("A2: POST /users (admin)", success))
-    
-    if not created_user_id:
-        print("❌ CRITICAL: Failed to create test user, cannot continue with update/history/reset/delete tests")
-        return
-    
-    # A3: PUT /users/{uid} (update the created user)
-    results.append(("A3: PUT /users/{uid} (admin)", test_update_user(admin_token, SYAMSU_RIZAL["name"], created_user_id, 200)))
-    
-    # A4: GET /users/{uid}/history
-    results.append(("A4: GET /users/{uid}/history (admin)", test_get_user_history(admin_token, SYAMSU_RIZAL["name"], created_user_id, 200)))
-    
-    # A5: POST /users/{uid}/reset-password
-    results.append(("A5: POST /users/{uid}/reset-password (admin)", test_reset_password(admin_token, SYAMSU_RIZAL["name"], created_user_id, 200)))
-    
-    # A6: DELETE /users/{uid} (cleanup - delete the test user)
-    results.append(("A6: DELETE /users/{uid} (admin)", test_delete_user(admin_token, SYAMSU_RIZAL["name"], created_user_id, 200)))
-    
-    # ========== TEST CASE B: RATMIYATI (RCG but not admin) - Should be denied ==========
-    print("\n" + "=" * 80)
-    print("TEST CASE B: RATMIYATI (NIP 2180007674, RCG, is_user_admin=false)")
-    print("Expected: All 6 endpoints should return 403 (access denied)")
-    print("=" * 80)
-    
-    ratmiyati_token = login(RATMIYATI["nip"], RATMIYATI["password"])
-    if not ratmiyati_token:
-        print("❌ CRITICAL: Failed to login as RATMIYATI")
-        return
-    
-    # Create a dummy user ID for testing (we'll use IMMADHA's ID from the database)
-    # First, get a valid user ID by listing users as admin
-    headers = {"Authorization": f"Bearer {admin_token}"}
-    users_resp = requests.get(f"{BASE_URL}/users?role=RCO", headers=headers, timeout=10)
-    if users_resp.status_code == 200:
-        users = users_resp.json()
-        if users:
-            test_user_id = users[0]["id"]
-        else:
-            print("❌ No RCO users found for testing")
-            return
-    else:
-        print("❌ Failed to get users list for testing")
-        return
-    
-    # B1: GET /users
-    results.append(("B1: GET /users (RATMIYATI)", test_get_users(ratmiyati_token, RATMIYATI["name"], 403)))
-    
-    # B2: POST /users
-    success, _ = test_create_user(ratmiyati_token, RATMIYATI["name"], 403)
-    results.append(("B2: POST /users (RATMIYATI)", success))
-    
-    # B3: PUT /users/{uid}
-    results.append(("B3: PUT /users/{uid} (RATMIYATI)", test_update_user(ratmiyati_token, RATMIYATI["name"], test_user_id, 403)))
-    
-    # B4: GET /users/{uid}/history
-    results.append(("B4: GET /users/{uid}/history (RATMIYATI)", test_get_user_history(ratmiyati_token, RATMIYATI["name"], test_user_id, 403)))
-    
-    # B5: POST /users/{uid}/reset-password
-    results.append(("B5: POST /users/{uid}/reset-password (RATMIYATI)", test_reset_password(ratmiyati_token, RATMIYATI["name"], test_user_id, 403)))
-    
-    # B6: DELETE /users/{uid}
-    results.append(("B6: DELETE /users/{uid} (RATMIYATI)", test_delete_user(ratmiyati_token, RATMIYATI["name"], test_user_id, 403)))
-    
-    # ========== TEST CASE C: IMMADHA (RCG but not admin) - Should be denied ==========
-    print("\n" + "=" * 80)
-    print("TEST CASE C: IMMADHA (NIP 2175007386, RCG, is_user_admin=false)")
-    print("Expected: All 6 endpoints should return 403 (access denied)")
-    print("=" * 80)
-    
-    immadha_token = login(IMMADHA["nip"], IMMADHA["password"])
-    if not immadha_token:
-        print("❌ CRITICAL: Failed to login as IMMADHA")
-        return
-    
-    # C1: GET /users
-    results.append(("C1: GET /users (IMMADHA)", test_get_users(immadha_token, IMMADHA["name"], 403)))
-    
-    # C2: POST /users
-    success, _ = test_create_user(immadha_token, IMMADHA["name"], 403)
-    results.append(("C2: POST /users (IMMADHA)", success))
-    
-    # C3: PUT /users/{uid}
-    results.append(("C3: PUT /users/{uid} (IMMADHA)", test_update_user(immadha_token, IMMADHA["name"], test_user_id, 403)))
-    
-    # C4: GET /users/{uid}/history
-    results.append(("C4: GET /users/{uid}/history (IMMADHA)", test_get_user_history(immadha_token, IMMADHA["name"], test_user_id, 403)))
-    
-    # C5: POST /users/{uid}/reset-password (previously unprotected, now should be 403)
-    results.append(("C5: POST /users/{uid}/reset-password (IMMADHA)", test_reset_password(immadha_token, IMMADHA["name"], test_user_id, 403)))
-    
-    # C6: DELETE /users/{uid}
-    results.append(("C6: DELETE /users/{uid} (IMMADHA)", test_delete_user(immadha_token, IMMADHA["name"], test_user_id, 403)))
-    
-    # ========== TEST CASE D: RCRM User (non-RCG) - Should be denied ==========
-    print("\n" + "=" * 80)
-    print("TEST CASE D: RCRM User (NIP 2188017223, RCRM, non-RCG)")
-    print("Expected: All 6 endpoints should return 403 (access denied)")
-    print("=" * 80)
-    
-    rcrm_token = login(RCRM_USER["nip"], RCRM_USER["password"])
-    if not rcrm_token:
-        print("❌ CRITICAL: Failed to login as RCRM user")
-        return
-    
-    # D1: GET /users
-    results.append(("D1: GET /users (RCRM)", test_get_users(rcrm_token, RCRM_USER["name"], 403)))
-    
-    # D2: POST /users
-    success, _ = test_create_user(rcrm_token, RCRM_USER["name"], 403)
-    results.append(("D2: POST /users (RCRM)", success))
-    
-    # D3: PUT /users/{uid}
-    results.append(("D3: PUT /users/{uid} (RCRM)", test_update_user(rcrm_token, RCRM_USER["name"], test_user_id, 403)))
-    
-    # D4: GET /users/{uid}/history
-    results.append(("D4: GET /users/{uid}/history (RCRM)", test_get_user_history(rcrm_token, RCRM_USER["name"], test_user_id, 403)))
-    
-    # D5: POST /users/{uid}/reset-password
-    results.append(("D5: POST /users/{uid}/reset-password (RCRM)", test_reset_password(rcrm_token, RCRM_USER["name"], test_user_id, 403)))
-    
-    # D6: DELETE /users/{uid}
-    results.append(("D6: DELETE /users/{uid} (RCRM)", test_delete_user(rcrm_token, RCRM_USER["name"], test_user_id, 403)))
-    
-    # ========== SUMMARY ==========
-    print("\n" + "=" * 80)
+    # Summary
+    print("\n" + "="*80)
     print("TEST SUMMARY")
-    print("=" * 80)
+    print("="*80)
     
-    passed = sum(1 for _, result in results if result)
-    total = len(results)
+    passed_count = sum(1 for _, passed in results if passed)
+    total_count = len(results)
     
-    print(f"\nTotal Tests: {total}")
-    print(f"Passed: {passed}")
-    print(f"Failed: {total - passed}")
-    print(f"Success Rate: {passed}/{total} ({100*passed//total}%)")
+    for part_name, passed in results:
+        status = "✅ PASSED" if passed else "❌ FAILED"
+        print(f"{status} - {part_name}")
     
-    print("\nDetailed Results:")
-    for test_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"  {status}: {test_name}")
+    print(f"\nTotal: {passed_count}/{total_count} parts passed ({passed_count*100//total_count}%)")
     
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED! User management restriction is working correctly.")
-        print("✅ ONLY SYAMSU RIZAL (NIP 2183008345) can manage users.")
-        print("✅ All other users (including RCG users) are correctly blocked with 403.")
+    if passed_count == total_count:
+        print("\n🎉 ALL TESTS PASSED!")
+        return 0
     else:
-        print(f"\n⚠️  {total - passed} TEST(S) FAILED. Please review the failures above.")
-    
-    print("=" * 80)
+        print(f"\n⚠️  {total_count - passed_count} part(s) failed")
+        return 1
 
 if __name__ == "__main__":
-    run_test_suite()
+    exit(main())
