@@ -1,0 +1,125 @@
+{
+  "theme": "light",
+  "typography": {
+    "primary_font": "Manrope",
+    "secondary_font": "IBM Plex Sans",
+    "headings": {
+      "font": "Manrope",
+      "weights": ["600", "700", "800"],
+      "classes": "font-sans tracking-tight text-slate-900",
+      "h1": "text-2xl md:text-3xl lg:text-4xl",
+      "h2": "text-xl md:text-2xl",
+      "h3": "text-lg md:text-xl",
+      "h4": "text-base md:text-lg font-semibold"
+    },
+    "body": {
+      "font": "IBM Plex Sans",
+      "classes": "text-sm md:text-base text-slate-700 leading-relaxed",
+      "small": "text-xs text-slate-500 uppercase tracking-[0.05em]"
+    }
+  },
+  "colors": {
+    "brand": {
+      "primary": "#00A0A0",
+      "primary_hover": "#008888",
+      "primary_light": "#E6F6F6",
+      "accent": "#F0B43C",
+      "accent_hover": "#D9A236",
+      "accent_light": "#FDF7EB"
+    },
+    "background": {
+      "app": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "sidebar": "#FFFFFF",
+      "header": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "muted": "#94A3B8",
+      "inverse": "#FFFFFF"
+    },
+    "status": {
+      "dalam_sla": {"bg": "#E6F6F6", "text": "#00A0A0", "border": "#00A0A0"},
+      "mendekati_sla": {"bg": "#FDF7EB", "text": "#F0B43C", "border": "#F0B43C"},
+      "melebihi_sla": {"bg": "#FEF2F2", "text": "#EF4444", "border": "#EF4444"},
+      "approved": {"bg": "#ECFDF5", "text": "#10B981", "border": "#10B981"},
+      "rejected": {"bg": "#FEF2F2", "text": "#EF4444", "border": "#EF4444"},
+      "revisi": {"bg": "#FFFBEB", "text": "#F59E0B", "border": "#F59E0B"}
+    }
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "card": "shadow-[0_2px_10px_rgba(0,0,0,0.04)]",
+      "dropdown": "shadow-[0_8px_30px_rgba(0,0,0,0.12)]",
+      "button": "shadow-sm"
+    },
+    "borders": {
+      "subtle": "border border-slate-200",
+      "active": "border-2 border-[#00A0A0]",
+      "radius_card": "rounded-lg",
+      "radius_button": "rounded-md"
+    },
+    "marquee": {
+      "description": "Tagline: 'Solusi cerdas menuju pembiayaan berkelanjutan'",
+      "style": "The Editorial Ribbon (Subtle/Organic)",
+      "classes": "bg-[#00A0A0]/10 text-[#00A0A0] py-2 text-sm font-medium tracking-wide",
+      "motion": "Very slow, smooth drift using react-fast-marquee. No aggressive animations."
+    }
+  },
+  "layouts": {
+    "application_shell": "Sidebar navigation (w-64) on left, Top header for user profile/actions, Main content area with bg-[#F8FAFC].",
+    "dashboard_grid": "High Density Grid (Mode B): grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 or gap-6.",
+    "spacing_system": "Generous internal padding for cards (p-5 or p-6). Tight spacing for data rows (py-2)."
+  },
+  "components": {
+    "sidebar": {
+      "style": "Solid white background, right border border-slate-200. Active item: bg-[#E6F6F6] text-[#00A0A0] with left border-l-4 border-[#00A0A0]."
+    },
+    "cards": {
+      "style": "bg-white rounded-lg border border-slate-200 shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-6."
+    },
+    "buttons": {
+      "primary": "bg-[#00A0A0] hover:bg-[#008888] text-white rounded-md shadow-sm transition-colors",
+      "secondary": "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md",
+      "accent": "bg-[#F0B43C] hover:bg-[#D9A236] text-white rounded-md shadow-sm"
+    },
+    "tables": {
+      "style": "Dense tabular data. Header: bg-slate-50 text-slate-500 uppercase text-xs tracking-wider. Rows: border-b border-slate-100 hover:bg-slate-50/50. No vertical borders."
+    },
+    "forms": {
+      "inputs": "bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-[#00A0A0]/20 focus:border-[#00A0A0] text-sm.",
+      "multi_step": "Horizontal progress tracker with steps. Active step in #00A0A0, completed in #10B981."
+    },
+    "badges": {
+      "style": "px-2.5 py-0.5 rounded-full text-xs font-medium border"
+    }
+  },
+  "icons_and_media": {
+    "icon_library": "@phosphor-icons/react",
+    "icon_style": "Duotone or Regular weight for professional banking look.",
+    "images": [
+      {
+        "category": "auth_background",
+        "description": "Corporate banking, modern office, subtle abstract financial background",
+        "url": "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=2000"
+      }
+    ]
+  },
+  "motion_and_accessibility": {
+    "motion": "Minimalist. Hover states (-translate-y-[1px], subtle shadow), smooth opacity transitions. Marquee for tagline only.",
+    "accessibility": "Minimum 4.5:1 contrast for normal text. Use APCA contrast. Support prefers-reduced-motion."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You MUST NOT center align the app container. Text must flow naturally (left-aligned).",
+    "DO NOT use generic AI emoji characters.",
+    "All interactive elements and key informational elements MUST include a `data-testid` attribute (e.g., data-testid='login-submit-button').",
+    "Do NOT use HTML native date pickers or selects. Use Shadcn calendar/dropdowns if applicable, else style them meticulously.",
+    "CRITICAL: NO transparent backgrounds on dropdowns, modals, or sticky headers.",
+    "Bridge artful presentation with reliable UX for transaction/approval workflows.",
+    "Use solid backgrounds instead of glassmorphism to prevent visual refraction of financial data.",
+    "Ensure the tag line 'Solusi cerdas menuju pembiayaan berkelanjutan' runs elegantly at login/dashboard.",
+    "Color Usage: Use #00A0A0 (Primary) selectively for actions, avoid splashing it everywhere. Let the whitespace breathe.",
+    "Only generate guidelines and structures for .js files as .tsx files are not used."
+  ]
+}
