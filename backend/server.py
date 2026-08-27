@@ -71,6 +71,13 @@ def require_roles(*roles):
     return dep
 
 
+async def require_user_admin(user: dict = Depends(current_user)):
+    """Hanya SYAMSU RIZAL (NIP tertentu) yang boleh mengelola user."""
+    if user.get("role") != "RCG" or user.get("nip") != C.USER_ADMIN_NIP:
+        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengelola user")
+    return user
+
+
 async def audit(user, action, entity, entity_id, old=None, new=None):
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()), "user_id": user["id"], "nip": user["nip"], "nama": user["nama"],
@@ -226,7 +233,7 @@ def sanitize_user(u):
 
 @api.get("/users")
 async def list_users(role: Optional[str] = None, region: Optional[str] = None,
-                     area: Optional[str] = None, user: dict = Depends(require_roles("RCG"))):
+                     area: Optional[str] = None, user: dict = Depends(require_user_admin)):
     q = {}
     if role:
         q["role"] = role
@@ -239,9 +246,7 @@ async def list_users(role: Optional[str] = None, region: Optional[str] = None,
 
 
 @api.post("/users")
-async def create_user(req: UserReq, user: dict = Depends(require_roles("RCG"))):
-    if not user.get("is_user_admin"):
-        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat menambah user")
+async def create_user(req: UserReq, user: dict = Depends(require_user_admin)):
     if req.role not in ("RCO", "ACRM", "RCRM", "RCG"):
         raise HTTPException(status_code=400, detail="Role tidak valid")
     if await db.users.find_one({"nip": req.nip.strip()}):
@@ -274,9 +279,7 @@ async def create_user(req: UserReq, user: dict = Depends(require_roles("RCG"))):
 
 
 @api.put("/users/{uid}")
-async def update_user(uid: str, req: UserReq, user: dict = Depends(require_roles("RCG"))):
-    if not user.get("is_user_admin"):
-        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengubah user")
+async def update_user(uid: str, req: UserReq, user: dict = Depends(require_user_admin)):
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
@@ -306,7 +309,7 @@ async def update_user(uid: str, req: UserReq, user: dict = Depends(require_roles
 
 
 @api.get("/users/{uid}/history")
-async def user_history(uid: str, user: dict = Depends(require_roles("RCG"))):
+async def user_history(uid: str, user: dict = Depends(require_user_admin)):
     """Riwayat perubahan user (create/update/reset/delete) untuk transparansi audit admin."""
     logs = await db.audit_logs.find(
         {"entity": "user", "entity_id": uid}, NO_ID
@@ -315,7 +318,7 @@ async def user_history(uid: str, user: dict = Depends(require_roles("RCG"))):
 
 
 @api.post("/users/{uid}/reset-password")
-async def reset_password(uid: str, user: dict = Depends(require_roles("RCG"))):
+async def reset_password(uid: str, user: dict = Depends(require_user_admin)):
     pw = generate_password(8)
     r = await db.users.update_one({"id": uid}, {"$set": {"password_hash": hash_password(pw), "initial_password": pw, "updated_at": now_iso()}})
     if r.matched_count == 0:
@@ -325,9 +328,7 @@ async def reset_password(uid: str, user: dict = Depends(require_roles("RCG"))):
 
 
 @api.delete("/users/{uid}")
-async def delete_user(uid: str, user: dict = Depends(require_roles("RCG"))):
-    if not user.get("is_user_admin"):
-        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat menghapus user")
+async def delete_user(uid: str, user: dict = Depends(require_user_admin)):
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")

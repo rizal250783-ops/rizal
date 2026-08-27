@@ -25,7 +25,9 @@ function menuFor(user) {
   }
   if (role === "RCG") {
     items.push({ to: "/risk-assessment", label: "Risk Assessment", icon: ShieldAlert, testid: "menu-ra" });
-    items.push({ to: "/users", label: "Manajemen User", icon: Users, testid: "menu-users" });
+    if (user.nip === "2183008345") {
+      items.push({ to: "/users", label: "Manajemen User", icon: Users, testid: "menu-users" });
+    }
     items.push({ to: "/master", label: "Master Data", icon: Database, testid: "menu-master" });
     items.push({ to: "/audit", label: "Panel Audit Global", icon: ScrollText, testid: "menu-audit" });
   }

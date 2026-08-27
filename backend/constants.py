@@ -2,6 +2,8 @@
 
 RCG_CAP = 30_000_000_000  # 30 Miliar
 IMMADHA_NIP = "2175007386"
+# Satu-satunya NIP yang berhak mengelola user (SYAMSU RIZAL)
+USER_ADMIN_NIP = "2183008345"
 
 # Master RCG users (from problem statement)
 RCG_USERS = [

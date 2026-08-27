@@ -18,11 +18,12 @@ import RiskAssessment from "./pages/RiskAssessment";
 import ChangePassword from "./pages/ChangePassword";
 import { Loader2 } from "lucide-react";
 
-function Protected({ children, roles }) {
+function Protected({ children, roles, nip }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#00A0A0]" size={32} /></div>;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  if (nip && user.nip !== nip) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -40,7 +41,7 @@ function AppRoutes() {
         <Route path="/approved" element={<ApprovedNotes />} />
         <Route path="/monitoring" element={<Protected roles={["RCRM", "RCG"]}><Monitoring /></Protected>} />
         <Route path="/risk-assessment" element={<Protected roles={["RCG"]}><RiskAssessment /></Protected>} />
-        <Route path="/users" element={<Protected roles={["RCG"]}><UserManagement /></Protected>} />
+        <Route path="/users" element={<Protected roles={["RCG"]} nip="2183008345"><UserManagement /></Protected>} />
         <Route path="/master" element={<Protected roles={["RCG"]}><MasterData /></Protected>} />
         <Route path="/audit" element={<Protected roles={["RCG"]}><AuditTrail /></Protected>} />
         <Route path="/notifications" element={<Notifications />} />
