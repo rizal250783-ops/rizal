@@ -42,7 +42,7 @@ function AppRoutes() {
         <Route path="/monitoring" element={<Protected roles={["RCRM", "RCG"]}><Monitoring /></Protected>} />
         <Route path="/risk-assessment" element={<Protected roles={["RCG"]}><RiskAssessment /></Protected>} />
         <Route path="/users" element={<Protected roles={["RCG"]} nip="2183008345"><UserManagement /></Protected>} />
-        <Route path="/master" element={<Protected roles={["RCG"]}><MasterData /></Protected>} />
+        <Route path="/master" element={<Protected roles={["RCG"]} nip="2183008345"><MasterData /></Protected>} />
         <Route path="/audit" element={<Protected roles={["RCG"]} nip="2183008345"><AuditTrail /></Protected>} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/change-password" element={<ChangePassword />} />

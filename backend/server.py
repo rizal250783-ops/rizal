@@ -195,7 +195,7 @@ async def get_holidays(user: dict = Depends(current_user)):
 
 
 @api.post("/holidays")
-async def add_holiday(req: HolidayReq, user: dict = Depends(require_roles("RCG"))):
+async def add_holiday(req: HolidayReq, user: dict = Depends(require_user_admin)):
     doc = {"id": str(uuid.uuid4()), "tanggal": req.tanggal, "keterangan": req.keterangan}
     await db.holidays.insert_one(doc)
     await audit(user, "add_holiday", "holiday", doc["id"], None, doc)
@@ -204,7 +204,7 @@ async def add_holiday(req: HolidayReq, user: dict = Depends(require_roles("RCG")
 
 
 @api.delete("/holidays/{hid}")
-async def del_holiday(hid: str, user: dict = Depends(require_roles("RCG"))):
+async def del_holiday(hid: str, user: dict = Depends(require_user_admin)):
     await db.holidays.delete_one({"id": hid})
     await audit(user, "delete_holiday", "holiday", hid)
     return {"ok": True}
