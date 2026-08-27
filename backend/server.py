@@ -969,7 +969,7 @@ async def monitoring(user: dict = Depends(require_roles("RCRM", "RCG")),
 
 
 @api.get("/audit")
-async def audit_logs(user: dict = Depends(require_roles("RCG")), limit: int = 1000,
+async def audit_logs(user: dict = Depends(require_user_admin), limit: int = 1000,
                      q: Optional[str] = None, action: Optional[str] = None,
                      entity: Optional[str] = None, date_from: Optional[str] = None,
                      date_to: Optional[str] = None):
@@ -996,7 +996,7 @@ async def audit_logs(user: dict = Depends(require_roles("RCG")), limit: int = 10
 
 
 @api.get("/audit/meta")
-async def audit_meta(user: dict = Depends(require_roles("RCG"))):
+async def audit_meta(user: dict = Depends(require_user_admin)):
     actions = await db.audit_logs.distinct("action")
     entities = await db.audit_logs.distinct("entity")
     return {"actions": sorted([a for a in actions if a]), "entities": sorted([e for e in entities if e])}

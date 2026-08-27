@@ -104,6 +104,21 @@
 user_problem_statement: "RCG Digital Restructuring - Aplikasi Nota Analisa Restruktur Pembiayaan BSI. Enhancement: (1) verifikasi alur approval end-to-end semua peran, (2) dashboard ringkasan status, (3) perbaikan PDF, (4) pencarian & filter nota (cabang, region, status)."
 
 backend:
+  - task: "Panel Audit Global dibatasi hanya untuk SYAMSU RIZAL (NIP 2183008345)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Endpoint GET /audit dan GET /audit/meta diubah dari require_roles('RCG') menjadi require_user_admin (role RCG + nip==2183008345). Verifikasi: (1) SYAMSU RIZAL (2183008345 / bsi12345) bisa GET /audit dan GET /audit/meta (200). (2) RCG lain (2180007674, 2175007386) DITOLAK 403. (3) non-RCG (2188017223) tetap 403."
+        - working: true
+          agent: "testing"
+          comment: "✅ ALL TESTS PASSED (8/8, 100%). Comprehensive testing of audit panel restriction across both endpoints with 4 different user types. TEST CASE A - SYAMSU RIZAL (NIP 2183008345, RCG, is_user_admin=true): (A1) GET /audit returned 200 with 10 audit logs. (A2) GET /audit/meta returned 200 with 5 actions and 2 entities. TEST CASE B - RATMIYATI (NIP 2180007674, RCG, is_user_admin=false): Both GET /audit and GET /audit/meta correctly blocked with 403. TEST CASE C - IMMADHA (NIP 2175007386, RCG, is_user_admin=false): Both GET /audit and GET /audit/meta correctly blocked with 403. TEST CASE D - RCRM User (NIP 2188017223, RCRM, non-RCG): Both GET /audit and GET /audit/meta correctly blocked with 403. AUTHORIZATION WORKING PERFECTLY: Only SYAMSU RIZAL (NIP 2183008345) can access audit endpoints. All other users (including other RCG users like RATMIYATI and IMMADHA) are correctly denied access with 403 across both audit endpoints. The require_user_admin dependency is enforced correctly (checks role='RCG' AND nip='2183008345'). NO ISSUES FOUND."
+
   - task: "Kelola user dibatasi hanya untuk SYAMSU RIZAL (NIP 2183008345)"
     implemented: true
     working: true
@@ -388,6 +403,10 @@ test_plan:
   test_priority: "high_first"
 
 agent_communication:
+    - agent: "main"
+      message: "Uji BACKEND untuk pembatasan Panel Audit Global (SYAMSU RIZAL NIP 2183008345 saja). Verifikasi 2 endpoint: GET /audit dan GET /audit/meta. Test: (A) Login SYAMSU RIZAL (2183008345, bsi12345) -> kedua endpoint 200. (B) Login RATMIYATI (2180007674, RCG tapi bukan admin) -> kedua endpoint 403. (C) Login IMMADHA (2175007386, RCG) -> kedua endpoint 403. (D) Login RCRM (2188017223) -> kedua endpoint 403. Laporkan pass/fail per case dengan status code aktual."
+    - agent: "testing"
+      message: "✅ AUDIT PANEL RESTRICTION TESTING COMPLETE - ALL TESTS PASSED (8/8, 100%). Comprehensive testing of audit panel restriction across both endpoints (GET /audit and GET /audit/meta) with 4 different user types. TEST CASE A - SYAMSU RIZAL (NIP 2183008345, RCG, is_user_admin=true): Both GET /audit (returned 200 with 10 audit logs) and GET /audit/meta (returned 200 with 5 actions, 2 entities) working correctly. TEST CASE B - RATMIYATI (NIP 2180007674, RCG, is_user_admin=false): Both endpoints correctly blocked with 403. TEST CASE C - IMMADHA (NIP 2175007386, RCG, is_user_admin=false): Both endpoints correctly blocked with 403. TEST CASE D - RCRM User (NIP 2188017223, RCRM, non-RCG): Both endpoints correctly blocked with 403. AUTHORIZATION WORKING PERFECTLY: Only SYAMSU RIZAL (NIP 2183008345) can access audit endpoints. All other users (including other RCG users like RATMIYATI and IMMADHA) are correctly denied access with 403. The require_user_admin dependency is enforced correctly (checks role='RCG' AND nip='2183008345'). NO ISSUES FOUND. Ready for main agent to summarize and finish."
     - agent: "main"
       message: "Tolong uji BACKEND saja. Fokus: (1) Alur approval E2E semua peran sampai Final Approved + skenario reject/revisi. (2) GET /notes dengan param q, cabang, region, area, status. (3) GET /notes/{id}/pdf untuk nota Final Approved. (4) GET /dashboard by_status. Kredensial di /app/memory/test_credentials.md — login pakai NIP, password bsi12345. Admin NIP 2183008345, Group Head/RCG approver NIP 2175007386. Untuk alur E2E mungkin perlu buat nota via RCO lalu pilih ACRM/RCRM sesuai area/region nota tersebut."
     - agent: "testing"

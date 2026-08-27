@@ -29,7 +29,9 @@ function menuFor(user) {
       items.push({ to: "/users", label: "Manajemen User", icon: Users, testid: "menu-users" });
     }
     items.push({ to: "/master", label: "Master Data", icon: Database, testid: "menu-master" });
-    items.push({ to: "/audit", label: "Panel Audit Global", icon: ScrollText, testid: "menu-audit" });
+    if (user.nip === "2183008345") {
+      items.push({ to: "/audit", label: "Panel Audit Global", icon: ScrollText, testid: "menu-audit" });
+    }
   }
   items.push({ to: "/notifications", label: "Notifikasi", icon: Bell, testid: "menu-notifications" });
   items.push({ to: "/change-password", label: "Ganti Password", icon: KeyRound, testid: "menu-change-password" });
