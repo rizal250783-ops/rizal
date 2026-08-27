@@ -731,6 +731,370 @@ def test_dashboard():
         log_test("Dashboard", False, f"Error: {e}")
 
 
+def test_admin_edit_limit():
+    """Test admin editing user limit_pemutus"""
+    print("\n" + "="*80)
+    print("TEST 9: Admin Edit User - Change Limit")
+    print("="*80)
+    
+    # Login as admin
+    admin_login = login(CREDENTIALS["admin"]["nip"])
+    if not admin_login:
+        log_test("Admin Edit Limit", False, "Admin login failed")
+        return
+    
+    admin_token = admin_login["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    try:
+        # Get list of ACRM users
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Edit Limit", False, f"Failed to get ACRM users: {resp.status_code}")
+            return
+        
+        acrm_users = resp.json()
+        if len(acrm_users) == 0:
+            log_test("Admin Edit Limit", False, "No ACRM users found")
+            return
+        
+        # Pick first ACRM user
+        target_user = acrm_users[0]
+        user_id = target_user["id"]
+        old_limit = target_user.get("limit_pemutus", 0)
+        new_limit = 4500000000  # 4.5B
+        
+        print(f"   Editing user: {target_user['nama']} (NIP: {target_user['nip']})")
+        print(f"   Old limit: {old_limit}, New limit: {new_limit}")
+        
+        # Update user with new limit
+        update_payload = {
+            "nama": target_user["nama"],
+            "nip": target_user["nip"],
+            "role": target_user["role"],
+            "jabatan": target_user.get("jabatan", ""),
+            "region": target_user.get("region", ""),
+            "area": target_user.get("area", ""),
+            "limit_pemutus": new_limit,
+            "status": target_user.get("status", "aktif")
+        }
+        
+        resp = requests.put(f"{BASE_URL}/users/{user_id}", json=update_payload, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Edit Limit", False, f"PUT failed: {resp.status_code} - {resp.text}")
+            return
+        
+        # Verify the change by getting users again
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Edit Limit", False, "Failed to verify changes")
+            return
+        
+        updated_users = resp.json()
+        updated_user = next((u for u in updated_users if u["id"] == user_id), None)
+        
+        if not updated_user:
+            log_test("Admin Edit Limit", False, "User not found after update")
+            return
+        
+        if updated_user.get("limit_pemutus") == new_limit:
+            print(f"   ✓ Limit successfully updated to {new_limit}")
+            log_test("Admin Edit Limit", True)
+        else:
+            log_test("Admin Edit Limit", False, f"Limit not updated. Expected {new_limit}, got {updated_user.get('limit_pemutus')}")
+    
+    except Exception as e:
+        log_test("Admin Edit Limit", False, f"Error: {e}")
+
+
+def test_admin_move_area():
+    """Test admin moving user to different area (region should auto-follow)"""
+    print("\n" + "="*80)
+    print("TEST 10: Admin Edit User - Move Area (Region Auto-Follow)")
+    print("="*80)
+    
+    # Login as admin
+    admin_login = login(CREDENTIALS["admin"]["nip"])
+    if not admin_login:
+        log_test("Admin Move Area", False, "Admin login failed")
+        return
+    
+    admin_token = admin_login["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    try:
+        # Get list of areas
+        resp = requests.get(f"{BASE_URL}/areas", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Move Area", False, f"Failed to get areas: {resp.status_code}")
+            return
+        
+        areas = resp.json()
+        if len(areas) < 2:
+            log_test("Admin Move Area", False, "Not enough areas to test move")
+            return
+        
+        # Get ACRM users
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Move Area", False, f"Failed to get ACRM users: {resp.status_code}")
+            return
+        
+        acrm_users = resp.json()
+        if len(acrm_users) == 0:
+            log_test("Admin Move Area", False, "No ACRM users found")
+            return
+        
+        # Pick first ACRM user
+        target_user = acrm_users[0]
+        user_id = target_user["id"]
+        old_area = target_user.get("area", "")
+        old_region = target_user.get("region", "")
+        
+        # Find a different area with different region
+        new_area_obj = None
+        for area in areas:
+            if area["nama"] != old_area and area.get("region") != old_region:
+                new_area_obj = area
+                break
+        
+        if not new_area_obj:
+            # If no different region, just pick a different area
+            for area in areas:
+                if area["nama"] != old_area:
+                    new_area_obj = area
+                    break
+        
+        if not new_area_obj:
+            log_test("Admin Move Area", False, "Could not find different area to move to")
+            return
+        
+        new_area = new_area_obj["nama"]
+        expected_region = new_area_obj["region"]
+        
+        print(f"   Moving user: {target_user['nama']} (NIP: {target_user['nip']})")
+        print(f"   Old area: {old_area} (region: {old_region})")
+        print(f"   New area: {new_area} (expected region: {expected_region})")
+        
+        # Update user with new area (send old region or even wrong region on purpose)
+        update_payload = {
+            "nama": target_user["nama"],
+            "nip": target_user["nip"],
+            "role": target_user["role"],
+            "jabatan": target_user.get("jabatan", ""),
+            "region": old_region,  # Send old region - backend should override
+            "area": new_area,
+            "limit_pemutus": target_user.get("limit_pemutus", 0),
+            "status": target_user.get("status", "aktif")
+        }
+        
+        resp = requests.put(f"{BASE_URL}/users/{user_id}", json=update_payload, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Move Area", False, f"PUT failed: {resp.status_code} - {resp.text}")
+            return
+        
+        # Verify the change
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log_test("Admin Move Area", False, "Failed to verify changes")
+            return
+        
+        updated_users = resp.json()
+        updated_user = next((u for u in updated_users if u["id"] == user_id), None)
+        
+        if not updated_user:
+            log_test("Admin Move Area", False, "User not found after update")
+            return
+        
+        actual_area = updated_user.get("area")
+        actual_region = updated_user.get("region")
+        
+        print(f"   After update - area: {actual_area}, region: {actual_region}")
+        
+        # Critical assertion: region must match the new area's region
+        if actual_area == new_area and actual_region == expected_region:
+            print(f"   ✓ Area updated to {new_area}")
+            print(f"   ✓ Region auto-followed to {expected_region}")
+            log_test("Admin Move Area", True)
+        else:
+            details = []
+            if actual_area != new_area:
+                details.append(f"Area mismatch: expected {new_area}, got {actual_area}")
+            if actual_region != expected_region:
+                details.append(f"Region mismatch: expected {expected_region}, got {actual_region}")
+            log_test("Admin Move Area", False, "; ".join(details))
+    
+    except Exception as e:
+        log_test("Admin Move Area", False, f"Error: {e}")
+
+
+def test_authorization_non_admin():
+    """Test non-admin user cannot edit/create users"""
+    print("\n" + "="*80)
+    print("TEST 11: Authorization - Non-Admin Cannot Edit/Create Users")
+    print("="*80)
+    
+    # Login as IMMADHA (RCG but not admin)
+    immadha_login = login(CREDENTIALS["rcg_approver"]["nip"])
+    if not immadha_login:
+        log_test("Non-Admin Authorization", False, "IMMADHA login failed")
+        return
+    
+    immadha_token = immadha_login["token"]
+    headers = {"Authorization": f"Bearer {immadha_token}"}
+    
+    try:
+        # First get a user to try to edit
+        # Login as admin to get user list
+        admin_login = login(CREDENTIALS["admin"]["nip"])
+        if not admin_login:
+            log_test("Non-Admin Authorization", False, "Admin login failed")
+            return
+        
+        admin_token = admin_login["token"]
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        
+        resp = requests.get(f"{BASE_URL}/users?role=ACRM", headers=admin_headers, timeout=10)
+        if resp.status_code != 200 or len(resp.json()) == 0:
+            log_test("Non-Admin Authorization", False, "Could not get test user")
+            return
+        
+        test_user = resp.json()[0]
+        user_id = test_user["id"]
+        
+        # Test 1: Try to PUT (edit) as non-admin - should get 403
+        update_payload = {
+            "nama": test_user["nama"],
+            "nip": test_user["nip"],
+            "role": test_user["role"],
+            "jabatan": test_user.get("jabatan", ""),
+            "region": test_user.get("region", ""),
+            "area": test_user.get("area", ""),
+            "limit_pemutus": test_user.get("limit_pemutus", 0),
+            "status": test_user.get("status", "aktif")
+        }
+        
+        resp = requests.put(f"{BASE_URL}/users/{user_id}", json=update_payload, headers=headers, timeout=10)
+        
+        if resp.status_code == 403:
+            print(f"   ✓ PUT /users/{user_id} correctly blocked with 403")
+            put_passed = True
+        else:
+            print(f"   ✗ PUT /users/{user_id} returned {resp.status_code}, expected 403")
+            put_passed = False
+        
+        # Test 2: Try to POST (create) as non-admin - should get 403
+        create_payload = {
+            "nama": "TEST USER",
+            "nip": f"9999{TEST_RUN_ID}",
+            "role": "RCO",
+            "jabatan": "RCO",
+            "region": "",
+            "area": "Area Banda Aceh",
+            "limit_pemutus": 0,
+            "status": "aktif"
+        }
+        
+        resp = requests.post(f"{BASE_URL}/users", json=create_payload, headers=headers, timeout=10)
+        
+        if resp.status_code == 403:
+            print(f"   ✓ POST /users correctly blocked with 403")
+            post_passed = True
+        else:
+            print(f"   ✗ POST /users returned {resp.status_code}, expected 403")
+            post_passed = False
+        
+        if put_passed and post_passed:
+            log_test("Non-Admin Authorization", True)
+        else:
+            failed_ops = []
+            if not put_passed:
+                failed_ops.append("PUT not blocked")
+            if not post_passed:
+                failed_ops.append("POST not blocked")
+            log_test("Non-Admin Authorization", False, ", ".join(failed_ops))
+    
+    except Exception as e:
+        log_test("Non-Admin Authorization", False, f"Error: {e}")
+
+
+def test_admin_create_rcg_user():
+    """Test admin creating RCG user"""
+    print("\n" + "="*80)
+    print("TEST 12: Admin Create RCG User")
+    print("="*80)
+    
+    # Login as admin
+    admin_login = login(CREDENTIALS["admin"]["nip"])
+    if not admin_login:
+        log_test("Admin Create RCG User", False, "Admin login failed")
+        return
+    
+    admin_token = admin_login["token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    try:
+        # Create unique NIP for test
+        unique_nip = f"9990{TEST_RUN_ID}"
+        
+        create_payload = {
+            "nama": "TEST RCG USER",
+            "nip": unique_nip,
+            "role": "RCG",
+            "jabatan": "RCG",
+            "region": "",
+            "area": "",
+            "limit_pemutus": 0,
+            "status": "aktif"
+        }
+        
+        print(f"   Creating RCG user with NIP: {unique_nip}")
+        
+        resp = requests.post(f"{BASE_URL}/users", json=create_payload, headers=headers, timeout=10)
+        
+        if resp.status_code != 200:
+            log_test("Admin Create RCG User", False, f"POST failed: {resp.status_code} - {resp.text}")
+            return
+        
+        result = resp.json()
+        
+        # Verify response structure
+        if "user" not in result or "generated_password" not in result:
+            log_test("Admin Create RCG User", False, "Response missing user or generated_password")
+            return
+        
+        created_user = result["user"]
+        generated_password = result["generated_password"]
+        
+        print(f"   ✓ User created with ID: {created_user.get('id', '')[:8]}...")
+        print(f"   ✓ Generated password: {generated_password}")
+        
+        # Verify user properties
+        checks = []
+        
+        if created_user.get("role") != "RCG":
+            checks.append(f"Role mismatch: expected RCG, got {created_user.get('role')}")
+        
+        if created_user.get("nip") != unique_nip:
+            checks.append(f"NIP mismatch: expected {unique_nip}, got {created_user.get('nip')}")
+        
+        # For RCG, region and area should be None/null
+        if created_user.get("region") not in (None, "", "null"):
+            checks.append(f"Region should be null for RCG, got {created_user.get('region')}")
+        
+        if created_user.get("area") not in (None, "", "null"):
+            checks.append(f"Area should be null for RCG, got {created_user.get('area')}")
+        
+        if checks:
+            log_test("Admin Create RCG User", False, "; ".join(checks))
+        else:
+            print(f"   ✓ Role: RCG, Region: {created_user.get('region')}, Area: {created_user.get('area')}")
+            log_test("Admin Create RCG User", True)
+    
+    except Exception as e:
+        log_test("Admin Create RCG User", False, f"Error: {e}")
+
+
 def print_summary():
     """Print test summary"""
     print("\n" + "="*80)
@@ -765,20 +1129,37 @@ def main():
     print(f"Base URL: {BASE_URL}")
     print("="*80)
     
-    # Run approval flow tests
-    approved_small = test_approval_flow_small_amount()
-    approved_large = test_approval_flow_large_amount()
-    test_approval_flow_reject()
-    test_approval_flow_revisi()
-    test_authorization()
+    # Check if we should run only admin edit user tests
+    import os
+    test_mode = os.environ.get("TEST_MODE", "all")
     
-    # Use one of the approved notas for PDF test
-    approved_nota = approved_small or approved_large
-    
-    # Run other tests
-    test_search_and_filter(approved_nota)
-    test_pdf_generation(approved_nota)
-    test_dashboard()
+    if test_mode == "admin_edit_only":
+        print("\n🎯 RUNNING ADMIN EDIT USER TESTS ONLY\n")
+        test_admin_edit_limit()
+        test_admin_move_area()
+        test_authorization_non_admin()
+        test_admin_create_rcg_user()
+    else:
+        # Run approval flow tests
+        approved_small = test_approval_flow_small_amount()
+        approved_large = test_approval_flow_large_amount()
+        test_approval_flow_reject()
+        test_approval_flow_revisi()
+        test_authorization()
+        
+        # Use one of the approved notas for PDF test
+        approved_nota = approved_small or approved_large
+        
+        # Run other tests
+        test_search_and_filter(approved_nota)
+        test_pdf_generation(approved_nota)
+        test_dashboard()
+        
+        # Run admin edit user tests
+        test_admin_edit_limit()
+        test_admin_move_area()
+        test_authorization_non_admin()
+        test_admin_create_rcg_user()
     
     # Print summary
     all_passed = print_summary()

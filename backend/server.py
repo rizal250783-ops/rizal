@@ -275,11 +275,30 @@ async def create_user(req: UserReq, user: dict = Depends(require_roles("RCG"))):
 
 @api.put("/users/{uid}")
 async def update_user(uid: str, req: UserReq, user: dict = Depends(require_roles("RCG"))):
+    if not user.get("is_user_admin"):
+        raise HTTPException(status_code=403, detail="Hanya SYAMSU RIZAL yang dapat mengubah user")
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    role = target.get("role")
+    region, area = req.region, req.area
+    if role in ("RCO", "ACRM"):
+        if not area:
+            raise HTTPException(status_code=400, detail="Area wajib diisi")
+        arow = await db.areas.find_one({"nama": area})
+        region = arow["region"] if arow else region  # region mengikuti area saat pindah
+        if role == "ACRM" and not req.limit_pemutus:
+            raise HTTPException(status_code=400, detail="Limit pemutus wajib untuk ACRM")
+    elif role == "RCRM":
+        if not region:
+            raise HTTPException(status_code=400, detail="Region wajib diisi")
+        if not req.limit_pemutus:
+            raise HTTPException(status_code=400, detail="Limit pemutus wajib untuk RCRM")
+        area = None
+    else:  # RCG
+        region, area = None, None
     upd = {"nama": req.nama, "jabatan": req.jabatan or target.get("jabatan"),
-           "region": req.region, "area": req.area, "limit_pemutus": req.limit_pemutus or 0,
+           "region": region, "area": area, "limit_pemutus": req.limit_pemutus or 0,
            "status": req.status or "aktif", "updated_at": now_iso()}
     await db.users.update_one({"id": uid}, {"$set": upd})
     await audit(user, "update_user", "user", uid, sanitize_user(target), upd)
