@@ -1,18 +1,75 @@
 """Professional printable PDF generation for approved notes."""
 import io
+import os
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether, Image,
 )
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.pdfgen import canvas as _canvas
 
 TEAL = colors.HexColor("#00A0A0")
 GOLD = colors.HexColor("#F0B43C")
 DARK = colors.HexColor("#0F172A")
 LIGHT = colors.HexColor("#F1F5F9")
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "bsi_logo.png")
+
+
+class NumberedCanvas(_canvas.Canvas):
+    """Canvas dua-lintasan untuk menomori halaman: 'Halaman X dari Y halaman'."""
+
+    def __init__(self, *args, **kwargs):
+        self._nomor = kwargs.pop("nomor", "-")
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved_page_states)
+        for i, state in enumerate(self._saved_page_states, 1):
+            self.__dict__.update(state)
+            self._draw_footer(i, total)
+            super().showPage()
+        super().save()
+
+    def _draw_footer(self, page_num, total):
+        w, h = A4
+        self.saveState()
+        self.setStrokeColor(GOLD)
+        self.setLineWidth(0.8)
+        self.line(15 * mm, 12 * mm, w - 15 * mm, 12 * mm)
+        self.setFont("Helvetica", 6.5)
+        self.setFillColor(colors.grey)
+        self.drawString(15 * mm, 8 * mm, "DOKUMEN RAHASIA - PT. Bank Syariah Indonesia, Tbk (Internal Use Only)")
+        self.drawCentredString(w / 2, 8 * mm, f"Nota: {self._nomor}")
+        self.drawRightString(w - 15 * mm, 8 * mm, f"Halaman {page_num} dari {total} halaman")
+        self.restoreState()
+
+
+def _logo_flowable():
+    """Logo BSI (pojok kanan atas). Fallback ke teks jika file logo belum tersedia."""
+    if os.path.exists(LOGO_PATH):
+        try:
+            img = Image(LOGO_PATH)
+            iw, ih = img.imageWidth, img.imageHeight
+            target_h = 14 * mm
+            img.drawHeight = target_h
+            img.drawWidth = iw * (target_h / ih)
+            img.hAlign = "RIGHT"
+            return img
+        except Exception:
+            pass
+    return Paragraph(
+        "RCG DIGITAL RESTRUCTURING<br/><font size=7 color='#F0B43C'>Solusi cerdas menuju pembiayaan berkelanjutan</font>",
+        ParagraphStyle("hd2", fontName="Helvetica", fontSize=8, textColor=DARK, alignment=TA_RIGHT),
+    )
 
 
 def rp(v):
@@ -84,6 +141,79 @@ def _block(title, flowables, ss):
     return KeepTogether(items)
 
 
+def _sign_column(cells, ss):
+    t = Table([[c] for c in cells])
+    t.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    return t
+
+
+def _signatures(note, ss):
+    """Kolom tanda tangan basah/digital: Pengusul (I, II, III...) + Pemutus.
+    Disposisi pemutus diletakkan sejajar dalam kolom pemutus."""
+    st_title = ParagraphStyle("sgT", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, alignment=TA_CENTER, leading=11)
+    st_sub = ParagraphStyle("sgS", fontName="Helvetica", fontSize=7.5, textColor=DARK, alignment=TA_CENTER, leading=10)
+    st_name = ParagraphStyle("sgN", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, alignment=TA_CENTER, leading=11)
+    st_disp = ParagraphStyle("sgD", fontName="Helvetica-Oblique", fontSize=7, textColor=DARK, alignment=TA_CENTER, leading=9)
+
+    approvals = note.get("approvals", [])
+    pengusul = [ap for ap in approvals if ap.get("fungsi") == "Pengusul"]
+    if not pengusul:
+        pengusul = [{"nama": note.get("creator_nama", ""), "nip": note.get("creator_nip", ""),
+                     "jabatan": note.get("creator_jabatan") or note.get("dari", "")}]
+    labels = ["Pengusul I", "Pengusul II", "Pengusul III", "Pengusul IV", "Pengusul V"]
+    n = len(pengusul)
+
+    columns = []
+    for i, p in enumerate(pengusul):
+        title = labels[i] if n > 1 else "Pengusul"
+        columns.append(_sign_column([
+            Paragraph(title, st_title),
+            Paragraph(p.get("jabatan") or "", st_sub),
+            Spacer(1, 22 * mm),
+            Paragraph(p.get("nama") or "", st_name),
+            Paragraph(f"NIP {p.get('nip') or ''}", st_sub),
+        ], ss))
+
+    disposisi = (note.get("disposisi_pemutus") or "").strip()
+    pemutus_cells = [
+        Paragraph("Pemutus", st_title),
+        Paragraph(note.get("final_approver_jabatan") or "", st_sub),
+    ]
+    if disposisi:
+        pemutus_cells.append(Paragraph(f"Disposisi: {disposisi}", st_disp))
+        pemutus_cells.append(Spacer(1, 14 * mm))
+    else:
+        pemutus_cells.append(Spacer(1, 22 * mm))
+    pemutus_cells += [
+        Paragraph(note.get("final_approver_nama") or "", st_name),
+        Paragraph(f"NIP {note.get('final_approver_nip') or ''}", st_sub),
+    ]
+    columns.append(_sign_column(pemutus_cells, ss))
+
+    total_cols = len(columns)
+    cw = (180 * mm) / total_cols
+    grid = Table([columns], colWidths=[cw] * total_cols)
+    grid.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return KeepTogether([
+        _section("TANDA TANGAN PENGUSUL & PEMUTUS", ss),
+        Spacer(1, 2),
+        grid,
+    ])
+
+
 def generate_note_pdf(note: dict) -> bytes:
     ss = _styles()
     buf = io.BytesIO()
@@ -93,25 +223,15 @@ def generate_note_pdf(note: dict) -> bytes:
     _nomor = note.get("nomor_nota", "") or "-"
     _status = note.get("status", "") or ""
 
-    def _decorate(canvas, doc_):
-        canvas.saveState()
-        w, h = A4
-        # footer separator
-        canvas.setStrokeColor(GOLD)
-        canvas.setLineWidth(0.8)
-        canvas.line(15 * mm, 12 * mm, w - 15 * mm, 12 * mm)
-        canvas.setFont("Helvetica", 6.5)
-        canvas.setFillColor(colors.grey)
-        canvas.drawString(15 * mm, 8 * mm, "DOKUMEN RAHASIA - PT. Bank Syariah Indonesia, Tbk (Internal Use Only)")
-        canvas.drawCentredString(w / 2, 8 * mm, f"Nota: {_nomor}")
-        canvas.drawRightString(w - 15 * mm, 8 * mm, f"Halaman {doc_.page}")
-        canvas.restoreState()
-
-    # Header
+    # Header: judul aplikasi (kiri) + logo BSI (kanan atas)
     head = Table([[
-        Paragraph("<b>BSI</b>  BANK SYARIAH INDONESIA", ParagraphStyle("hd", fontName="Helvetica-Bold", fontSize=13, textColor=TEAL)),
-        Paragraph("RCG DIGITAL RESTRUCTURING<br/><font size=7 color='#F0B43C'>Solusi cerdas menuju pembiayaan berkelanjutan</font>", ParagraphStyle("hd2", fontName="Helvetica", fontSize=8, textColor=DARK, alignment=2)),
-    ]], colWidths=[100 * mm, 80 * mm])
+        Paragraph("RCG DIGITAL RESTRUCTURING<br/><font size=7 color='#F0B43C'>Solusi cerdas menuju pembiayaan berkelanjutan</font>", ParagraphStyle("hd", fontName="Helvetica-Bold", fontSize=12, textColor=TEAL, leading=15)),
+        _logo_flowable(),
+    ]], colWidths=[110 * mm, 70 * mm])
+    head.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
     el.append(head)
     el.append(HRFlowable(width="100%", thickness=1.5, color=GOLD, spaceBefore=4, spaceAfter=6))
     el.append(Paragraph("NOTA ANALISA RESTRUKTUR PEMBIAYAAN", ParagraphStyle("c", fontName="Helvetica-Bold", fontSize=11, textColor=DARK, alignment=TA_CENTER, spaceAfter=6)))
@@ -257,6 +377,11 @@ def generate_note_pdf(note: dict) -> bytes:
         Paragraph(note.get("approved_keterangan", ""), ParagraphStyle("kt", fontName="Helvetica-Oblique", fontSize=8, textColor=colors.grey, alignment=TA_JUSTIFY)),
     ]))
 
-    doc.build(el, onFirstPage=_decorate, onLaterPages=_decorate)
+    # Kolom tanda tangan basah/digital (Pengusul I/II/III + Pemutus) — hanya untuk nota approved
+    if note.get("status") == "Final Approved" or note.get("final_approver_nama"):
+        el.append(Spacer(1, 6))
+        el.append(_signatures(note, ss))
+
+    doc.build(el, canvasmaker=lambda *a, **k: NumberedCanvas(*a, nomor=_nomor, **k))
     buf.seek(0)
     return buf.read()

@@ -20,7 +20,7 @@ import io
 import constants as C
 from auth import (hash_password, verify_password, generate_password, create_token,
                   decode_token, get_token_from_request)
-from decision import route_note, status_for_stage
+from decision import route_note, status_for_stage, rcg_pemutus_nip
 from seed import seed_all
 from pdf_gen import generate_note_pdf
 from excel_export import export_notes_excel
@@ -135,7 +135,8 @@ async def stage_assignees(note, stage):
     if level == "RCRM":
         return [u["id"] async for u in db.users.find({"role": "RCRM", "region": note.get("region"), "status": "aktif"})]
     if level == "RCG":
-        return [u["id"] async for u in db.users.find({"nip": C.IMMADHA_NIP})]
+        nip = note.get("rcg_pemutus_nip") or C.IMMADHA_NIP
+        return [u["id"] async for u in db.users.find({"nip": nip})]
     return []
 
 
@@ -694,6 +695,105 @@ def can_download(user, note):
     return False
 
 
+def note_category(role, note):
+    """Kategori tab 'Daftar Nota' untuk role tertentu. None = tidak ditampilkan."""
+    status = note.get("status", "") or ""
+    lvl = note.get("final_approver_level")
+    is_draft = status == "Draft"
+    is_approved = status == "Final Approved"
+    is_reject = status.startswith("Reject")
+    is_revisi = status.startswith("Revisi")
+    waiting_review = status.startswith("Menunggu Review")
+    waiting_decide = status.startswith("Menunggu Pemutus")
+    is_escalation = status.startswith("Memerlukan")
+
+    if role == "RCO":
+        if is_draft:
+            return "draft"
+        if waiting_review:
+            return "sent_reviewer"
+        if waiting_decide or is_escalation:
+            return "sent_committee"
+        if is_approved:
+            return "approved"
+        if is_revisi:
+            return "correction"
+        if is_reject:
+            return "rejected"
+        return "draft"
+
+    if role == "ACRM":
+        if is_draft:
+            return None
+        if is_approved:
+            return "approved"
+        if is_reject:
+            return "rejected"
+        if is_revisi:
+            return "correction"
+        if lvl == "ACRM":
+            return "committee"
+        if lvl in ("RCRM", "RCG"):
+            return "review"
+        return None
+
+    if role == "RCRM":
+        if is_draft:
+            return None
+        if lvl not in ("RCRM", "RCG"):
+            return None
+        if is_approved:
+            return "approved"
+        if is_reject:
+            return "rejected"
+        if is_revisi:
+            return "correction"
+        if lvl == "RCRM":
+            return "committee"
+        if lvl == "RCG":
+            return "review"
+        return None
+
+    # RCG & Admin
+    if role == "RCG":
+        if is_draft:
+            return None
+        if lvl != "RCG":
+            # hanya urus nota level RCG (kecuali arsip approved tetap boleh lihat semua)
+            return "approved" if is_approved else None
+        if is_approved:
+            return "approved"
+        if is_reject:
+            return "rejected"
+        if is_revisi:
+            return "correction"
+        return "committee"
+    return None
+
+
+@api.get("/pemutus-preview")
+async def pemutus_preview(nilai: float = 0, user: dict = Depends(current_user)):
+    """Auto-tentukan pemutus untuk RCO berdasarkan total OS pokok + tunggakan pokok."""
+    area = user.get("area")
+    region = user.get("region")
+    routing, pemutus, rcg_nip = await resolve_pemutus(area, region, nilai, rac_ok=True)
+    final = routing["final_approver_level"]
+    if final == "ABOVE_RCG":
+        return {"level": "ABOVE_RCG", "nama": None, "nip": None, "jabatan": None,
+                "limit": None, "escalation": True,
+                "label": "Melebihi kewenangan RCG (perlu eskalasi di atas RCG)"}
+    p = pemutus or {}
+    return {
+        "level": final,
+        "nama": p.get("nama"),
+        "nip": p.get("nip"),
+        "jabatan": p.get("jabatan"),
+        "limit": p.get("limit_pemutus"),
+        "escalation": False,
+        "label": f"{p.get('nama','-')} (Pemutus {final})",
+    }
+
+
 @api.post("/notes")
 async def create_note(payload: dict, user: dict = Depends(require_roles("RCO"))):
     nomor_manual = str(payload.get("nomor_manual", "")).strip()
@@ -809,6 +909,24 @@ async def get_limits(note):
     return (acrm["limit_pemutus"] if acrm else 0), (rcrm["limit_pemutus"] if rcrm else 0), acrm, rcrm
 
 
+async def resolve_pemutus(area, region, nilai, rac_ok=True):
+    """Tentukan routing + pemutus (user) otomatis berdasarkan nilai vs limit kewenangan."""
+    note_like = {"area": area, "region": region}
+    acrm_limit, rcrm_limit, acrm, rcrm = await get_limits(note_like)
+    routing = route_note(float(nilai or 0), acrm_limit, rcrm_limit, rac_ok)
+    final = routing["final_approver_level"]
+    pemutus = None
+    rcg_nip = None
+    if final == "ACRM":
+        pemutus = acrm
+    elif final == "RCRM":
+        pemutus = rcrm
+    elif final == "RCG":
+        rcg_nip = rcg_pemutus_nip(float(nilai or 0))
+        pemutus = await db.users.find_one({"nip": rcg_nip}, NO_ID)
+    return routing, pemutus, rcg_nip
+
+
 @api.post("/notes/{nid}/submit")
 async def submit_note(nid: str, user: dict = Depends(require_roles("RCO"))):
     note = await db.notes.find_one({"id": nid})
@@ -827,8 +945,8 @@ async def submit_note(nid: str, user: dict = Depends(require_roles("RCO"))):
     if dup:
         raise HTTPException(status_code=400, detail="Nomor nota sudah digunakan di area ini")
     rac_ok = all(r.get("status") == "Terpenuhi" for r in note.get("rac", []))
-    acrm_limit, rcrm_limit, acrm, rcrm = await get_limits(note)
-    routing = route_note(note["nilai_kewenangan_pemutus"], acrm_limit, rcrm_limit, rac_ok)
+    nilai = note["nilai_kewenangan_pemutus"]
+    routing, pemutus, rcg_nip = await resolve_pemutus(note["area"], note["region"], nilai, rac_ok)
     stages = routing["stages"]
     # build proposals durasi
     props = note.get("proposals", [])
@@ -843,6 +961,11 @@ async def submit_note(nid: str, user: dict = Depends(require_roles("RCO"))):
         "rac_ok": rac_ok, "normal_approver_level": routing["normal_approver_level"],
         "final_approver_level": routing["final_approver_level"], "ra_required": routing["ra_required"],
         "stages": stages, "stage_index": 0, "status": status, "proposals": props,
+        "rcg_pemutus_nip": rcg_nip,
+        "pemutus_level": routing["final_approver_level"],
+        "pemutus_nip": (pemutus or {}).get("nip"),
+        "pemutus_nama": (pemutus or {}).get("nama"),
+        "pemutus_jabatan": (pemutus or {}).get("jabatan"),
         "submitted_at": now_iso(), "updated_at": now_iso(),
         "$push_approval": approval,
     }
@@ -890,8 +1013,11 @@ async def note_action(nid: str, req: ActionReq, user: dict = Depends(current_use
         if not (user["role"] == "RCRM" and user.get("region") == note["region"]):
             raise HTTPException(status_code=403, detail="Akses ditolak untuk tahap ini")
     elif level == "RCG":
-        if user["nip"] != C.IMMADHA_NIP:
-            raise HTTPException(status_code=403, detail="Approval RCG hanya oleh IMMADHA HANDY KUSUMA")
+        allowed_nip = note.get("rcg_pemutus_nip") or C.IMMADHA_NIP
+        if user["nip"] != allowed_nip:
+            allowed = await db.users.find_one({"nip": allowed_nip})
+            nama = allowed.get("nama", allowed_nip) if allowed else allowed_nip
+            raise HTTPException(status_code=403, detail=f"Pemutus RCG untuk nota ini hanya {nama}")
     elif level == "ESCALATION":
         raise HTTPException(status_code=400, detail="Nota memerlukan eskalasi di atas RCG, tidak dapat diproses")
     elif level == "RA":
@@ -1011,7 +1137,15 @@ async def list_notes(status: Optional[str] = None, area: Optional[str] = None,
         notes = [n for n in notes if any(f.get("segmen") == segmen for f in n.get("facilities", []))]
     if cabang:
         notes = [n for n in notes if any((f.get("nama_cabang") or "") == cabang for f in n.get("facilities", []))]
-    return notes
+    # attach kategori tab 'Daftar Nota' per role; sembunyikan nota yang tidak relevan bagi role non-RCO
+    result = []
+    for n in notes:
+        cat = note_category(user["role"], n)
+        if cat is None and user["role"] != "RCO":
+            continue
+        n["category"] = cat
+        result.append(n)
+    return result
 
 
 @api.get("/notes/{nid}")

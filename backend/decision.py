@@ -1,5 +1,5 @@
 """Decision engine: pemutus routing based on limit + RAC escalation."""
-from constants import RCG_CAP
+from constants import RCG_CAP, RATMIYATI_CAP, RATMIYATI_NIP, IMMADHA_NIP
 
 ORDER = ["ACRM", "RCRM", "RCG", "ABOVE_RCG"]
 
@@ -49,6 +49,13 @@ def build_stages(final: str, ra_required: bool):
 
 def status_for_stage(stage) -> str:
     return STAGE_STATUS.get((stage[0], stage[1]), "Menunggu Proses")
+
+
+def rcg_pemutus_nip(nilai: float) -> str:
+    """Di level RCG ada 2 pemutus: RATMIYATI (<= 10M) dan IMMADHA (> 10M s.d. 30M)."""
+    if nilai <= RATMIYATI_CAP:
+        return RATMIYATI_NIP
+    return IMMADHA_NIP
 
 
 def route_note(nilai: float, acrm_limit: float, rcrm_limit: float, rac_ok: bool):

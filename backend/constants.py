@@ -1,14 +1,16 @@
 """Reference data & business constants for RCG Digital Restructuring."""
 
-RCG_CAP = 30_000_000_000  # 30 Miliar
+RCG_CAP = 30_000_000_000  # 30 Miliar (limit maksimal RCG / IMMADHA)
+RATMIYATI_CAP = 10_000_000_000  # 10 Miliar (limit pemutus RATMIYATI di level RCG)
 IMMADHA_NIP = "2175007386"
+RATMIYATI_NIP = "2180007674"
 # Satu-satunya NIP yang berhak mengelola user (SYAMSU RIZAL)
 USER_ADMIN_NIP = "2183008345"
 
 # Master RCG users (from problem statement)
 RCG_USERS = [
     {"nip": "2175007386", "nama": "IMMADHA HANDY KUSUMA", "jabatan": "Group Head Retail Collection, Restructuring & Recovery Group", "limit_pemutus": 30_000_000_000, "can_approve": True, "is_user_admin": False},
-    {"nip": "2180007674", "nama": "RATMIYATI", "jabatan": "RCG", "limit_pemutus": 10_000_000_000, "can_approve": False, "is_user_admin": False},
+    {"nip": "2180007674", "nama": "RATMIYATI", "jabatan": "RCG", "limit_pemutus": 10_000_000_000, "can_approve": True, "is_user_admin": False},
     {"nip": "2183008345", "nama": "SYAMSU RIZAL", "jabatan": "RCG", "limit_pemutus": 0, "can_approve": False, "is_user_admin": True},
     {"nip": "2182008560", "nama": "Rizqy Rafiq Ahmad", "jabatan": "Micro Midrange & NPF Manager", "limit_pemutus": 0, "can_approve": False, "is_user_admin": False},
     {"nip": "2180005430", "nama": "Irfan Misbahul Arif", "jabatan": "SME Midrange & NPF Manager", "limit_pemutus": 0, "can_approve": False, "is_user_admin": False},
@@ -28,7 +30,7 @@ KOLEKTIBILITAS = ["2A", "2B", "2C", "3A", "3B", "3C", "4A", "4B", "4C", "5"]
 SEGMEN = ["KONSUMER", "RETAIL"]
 
 PRODUK = {
-    "KONSUMER": ["Griya", "Multiguna", "Pensiunan", "Pra Pensiunan", "Cicil Emas"],
+    "KONSUMER": ["Griya", "Mitraguna", "Pensiunan", "Pra Pensiunan", "Cicil Emas"],
     "RETAIL": ["SME", "Mikro"],
 }
 

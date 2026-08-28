@@ -5,7 +5,7 @@ import api, { apiError, API } from "../lib/api";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatRupiah } from "../lib/format";
 import {
-  ArrowLeft, Edit, Send, Check, X, RotateCcw, Download, Loader2, CheckCircle2, ShieldCheck, FileText
+  ArrowLeft, Edit, Send, Check, X, RotateCcw, Download, Loader2, CheckCircle2, ShieldCheck, FileText, Eye
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -185,6 +185,34 @@ export default function NoteDetail() {
             <Table head={["Jenis Fasilitas", "Akad", "Tujuan", "OS Pokok", "OS Margin", "Jangka Waktu"]}
               rows={(note.proposals || []).map((p) => [p.jenis_fasilitas, p.akad, p.tujuan, formatRupiah(p.os_pokok), formatRupiah(p.os_margin), `${p.tgl_mulai || "-"} s/d ${p.tgl_akhir || "-"} ${p.durasi ? `(${p.durasi})` : ""}`])} />
           </Block>
+
+          {(note.documents || []).length > 0 && (
+            <Block title="Dokumen Pendukung (Upload RCO)">
+              <div className="space-y-2" data-testid="note-documents">
+                {(note.documents || []).map((d, i) => {
+                  const fileUrl = `${API}/files/${d.file_path}`;
+                  const isImg = /\.(png|jpe?g|webp)$/i.test(d.file_path || "");
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-3 border border-slate-200 rounded-md px-3 py-2 bg-slate-50" data-testid={`doc-row-${i}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText size={16} className="text-[#00A0A0] shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-slate-800 font-medium truncate">{d.label || d.filename || d.document_type}</div>
+                          <div className="text-xs text-slate-400">{d.document_type}{isImg ? " · gambar" : (d.file_path?.toLowerCase().endsWith(".pdf") ? " · PDF" : "")}</div>
+                        </div>
+                      </div>
+                      {d.file_path && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-[#00A0A0] hover:bg-[#E6F6F6] border border-[#00A0A0]/40 rounded-md px-2.5 py-1.5 text-xs font-semibold flex items-center gap-1" data-testid={`doc-preview-${i}`}><Eye size={13} /> Preview</a>
+                          <a href={fileUrl} download className="text-slate-600 hover:bg-slate-100 border border-slate-300 rounded-md px-2.5 py-1.5 text-xs font-semibold flex items-center gap-1" data-testid={`doc-download-${i}`}><Download size={13} /> Download</a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Block>
+          )}
 
           {note.disposisi_pemutus && (
             <Block title="Disposisi Pemutus">

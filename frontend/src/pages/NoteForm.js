@@ -46,11 +46,9 @@ export default function NoteForm() {
   const [customDocs, setCustomDocs] = useState([]); // [{id, label, uploaded}]
   const [progress, setProgress] = useState({}); // key -> percent (0-100) while uploading
 
-  // Opsi Pemutus (label header) diturunkan dari area/region pembuat nota
-  const pemutusOptions = [];
-  if (user?.area) pemutusOptions.push(`ACRM ${String(user.area).replace(/^Area\s+/i, "")}`);
-  if (user?.region) pemutusOptions.push(`RCRM ${user.region}`);
-  pemutusOptions.push("Group Head RCG");
+  // Pemutus ditentukan OTOMATIS berdasarkan Nilai Kewenangan (total OS pokok + tunggakan pokok)
+  const [pemutusInfo, setPemutusInfo] = useState(null);
+  const [pemutusLoading, setPemutusLoading] = useState(false);
 
   useEffect(() => {
     api.get("/reference").then((r) => setRef(r.data));
@@ -104,6 +102,24 @@ export default function NoteForm() {
   const nilaiKewenangan = facilities.reduce((s, f) => s + parseNumber(f.os_pokok), 0);
   const totalKewajiban = facilities.reduce((s, f) => s + loanTotal(f), 0);
 
+  // Auto-tentukan pemutus setiap kali Nilai Kewenangan berubah (debounced)
+  useEffect(() => {
+    if (!nilaiKewenangan || nilaiKewenangan <= 0) { setPemutusInfo(null); return; }
+    let cancelled = false;
+    setPemutusLoading(true);
+    const t = setTimeout(() => {
+      api.get(`/pemutus-preview?nilai=${nilaiKewenangan}`)
+        .then((r) => { if (!cancelled) setPemutusInfo(r.data); })
+        .catch(() => { if (!cancelled) setPemutusInfo(null); })
+        .finally(() => { if (!cancelled) setPemutusLoading(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [nilaiKewenangan]);
+
+  const pemutusLabel = pemutusInfo?.escalation
+    ? pemutusInfo.label
+    : (pemutusInfo ? `${pemutusInfo.nama} (Pemutus ${pemutusInfo.level})` : "");
+
   const buildPayload = () => {
     const proposals = facilities.map((f) => ({
       jenis_fasilitas: f.segmen, akad: f.akad, tujuan: f.produk,
@@ -111,7 +127,7 @@ export default function NoteForm() {
       tgl_mulai: f.tgl_mulai, tgl_akhir: f.tgl_akhir,
     }));
     return {
-      nomor_manual: header.nomor_manual, kepada: header.kepada, reff_tanggal: header.reff_tanggal,
+      nomor_manual: header.nomor_manual, kepada: pemutusLabel || header.kepada, reff_tanggal: header.reff_tanggal,
       customer,
       facilities: facilities.map((f) => ({
         nama_cabang: f.nama_cabang, cif: f.cif, nomor_loan: f.nomor_loan, kolektibilitas: f.kolektibilitas,
@@ -204,10 +220,21 @@ export default function NoteForm() {
             <input className={inp + " mt-1"} maxLength={5} value={header.nomor_manual} onChange={(e) => setHeader({ ...header, nomor_manual: e.target.value.replace(/\D/g, "") })} data-testid="nf-nomor" placeholder="12345" />
             <p className="text-xs text-slate-400 mt-1">Format: 06/{header.nomor_manual || "xxxxx"}-2/ACR ...</p>
           </div>
-          <div><label className={lbl}>Pemutus</label>
-            <select className={inp + " mt-1"} value={header.kepada} onChange={(e) => setHeader({ ...header, kepada: e.target.value })} data-testid="nf-kepada">
-              <option value="">Pilih Pemutus</option>{pemutusOptions.map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
+          <div><label className={lbl}>Pemutus <span className="text-[#00A0A0]">(otomatis)</span></label>
+            <div className={inp + " mt-1 flex items-center gap-2 bg-slate-50 cursor-not-allowed min-h-[42px]"} data-testid="nf-kepada">
+              {pemutusLoading ? (
+                <span className="text-slate-400 text-sm flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Menghitung...</span>
+              ) : pemutusInfo ? (
+                pemutusInfo.escalation ? (
+                  <span className="text-red-600 text-sm font-medium">{pemutusInfo.label}</span>
+                ) : (
+                  <span className="text-slate-800 text-sm font-semibold">{pemutusInfo.nama} <span className="text-xs font-normal text-slate-500">· Pemutus {pemutusInfo.level}</span></span>
+                )
+              ) : (
+                <span className="text-slate-400 text-sm">Isi OS Pokok dahulu</span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Ditentukan otomatis dari Total OS Pokok + Tunggakan Pokok.</p>
           </div>
           <div><label className={lbl}>Tanggal Surat Reff (Permohonan Nasabah)</label>
             <input type="date" className={inp + " mt-1"} value={isoFromDDMM(header.reff_tanggal)} onChange={(e) => setHeader({ ...header, reff_tanggal: ddmmFromIso(e.target.value) })} data-testid="nf-reff" />

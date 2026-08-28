@@ -8,6 +8,45 @@ import { formatRupiah } from "../lib/format";
 import { FileText, FilePlus2, Eye, Search, Loader2, X, Filter, Download, FileSpreadsheet, BookmarkPlus, Bookmark, Share2, Users2 } from "lucide-react";
 import { toast } from "sonner";
 
+const ROLE_TABS = {
+  RCO: [
+    { key: "draft", label: "Draft Nota" },
+    { key: "sent_reviewer", label: "Sent to Reviewer" },
+    { key: "sent_committee", label: "Sent to Committee" },
+    { key: "approved", label: "Nota Approved" },
+    { key: "correction", label: "Nota Correction" },
+    { key: "rejected", label: "Nota Rejected" },
+  ],
+  ACRM: [
+    { key: "committee", label: "Nota Committee" },
+    { key: "review", label: "Nota Review" },
+    { key: "approved", label: "Nota Approved" },
+    { key: "correction", label: "Nota Correction" },
+    { key: "rejected", label: "Nota Rejected" },
+  ],
+  RCRM: [
+    { key: "committee", label: "Nota Committee" },
+    { key: "review", label: "Nota Review" },
+    { key: "approved", label: "Nota Approved" },
+    { key: "correction", label: "Nota Correction" },
+    { key: "rejected", label: "Nota Rejected" },
+  ],
+  RCG: [
+    { key: "committee", label: "Nota Committee" },
+    { key: "approved", label: "Nota Approved" },
+    { key: "correction", label: "Nota Correction" },
+    { key: "rejected", label: "Nota Rejected" },
+  ],
+};
+
+const lastActivity = (n) => {
+  const aps = n.approvals || [];
+  const last = aps[aps.length - 1];
+  if (!last) return { text: "-", when: "" };
+  const text = (n.disposisi_pemutus && n.status === "Final Approved" ? n.disposisi_pemutus : (last.disposisi || last.catatan)) || last.keputusan || "-";
+  return { text, when: `${last.date || ""} ${last.time || ""}`.trim() };
+};
+
 export default function NotesList() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -26,6 +65,8 @@ export default function NotesList() {
   const [shareForm, setShareForm] = useState({ name: "", scope: "region", region: "" });
 
   const isAdmin = user?.is_user_admin;
+  const tabs = ROLE_TABS[user?.role] || ROLE_TABS.RCG;
+  const [activeTab, setActiveTab] = useState(tabs[0]?.key);
 
   useEffect(() => { api.get("/notes").then((r) => setNotes(r.data)).catch(() => setNotes([])); }, []);
   useEffect(() => { api.get("/presets").then((r) => setSharedPresets(r.data)).catch(() => setSharedPresets([])); }, []);
@@ -56,17 +97,23 @@ export default function NotesList() {
 
   const cabangOf = (n) => (n.facilities || []).map((f) => f.nama_cabang || "").join(" ");
 
+  const tabCounts = tabs.reduce((acc, t) => {
+    acc[t.key] = notes.filter((n) => n.category === t.key).length;
+    return acc;
+  }, {});
+
   const filtered = notes.filter((n) => {
     const term = q.trim().toLowerCase();
     const okQ = !term
       || (n.customer?.nama || "").toLowerCase().includes(term)
       || (n.nomor_nota || "").toLowerCase().includes(term)
       || cabangOf(n).toLowerCase().includes(term);
+    const okTab = n.category === activeTab;
     const okS = !statusFilter || n.status === statusFilter;
     const okR = !regionFilter || n.region === regionFilter;
     const okA = !areaFilter || n.area === areaFilter;
     const okC = !cabangFilter || (n.facilities || []).some((f) => f.nama_cabang === cabangFilter);
-    return okQ && okS && okR && okA && okC;
+    return okQ && okTab && okS && okR && okA && okC;
   });
 
   const activeCount = [statusFilter, regionFilter, areaFilter, cabangFilter].filter(Boolean).length + (q.trim() ? 1 : 0);
@@ -188,6 +235,26 @@ export default function NotesList() {
         }
       />
 
+      <div className="flex flex-wrap gap-1.5 mb-4 border-b border-slate-200" data-testid="note-tabs">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            data-testid={`tab-${t.key}`}
+            onClick={() => setActiveTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-md -mb-px border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === t.key
+                ? "border-[#00A0A0] text-[#00A0A0] bg-white"
+                : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {t.label}
+            <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${activeTab === t.key ? "bg-[#00A0A0] text-white" : "bg-slate-200 text-slate-600"}`}>
+              {tabCounts[t.key] || 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
@@ -283,23 +350,27 @@ export default function NotesList() {
                 <th className="text-left font-semibold px-4 py-3">Cabang</th>
                 {user.role !== "RCO" && <th className="text-left font-semibold px-4 py-3">Area</th>}
                 <th className="text-right font-semibold px-4 py-3">Nilai Kewenangan</th>
-                <th className="text-right font-semibold px-4 py-3">Total Kewajiban</th>
+                <th className="text-left font-semibold px-4 py-3">Disposisi / Catatan</th>
+                <th className="text-left font-semibold px-4 py-3">Update (Tgl &amp; Jam)</th>
                 <th className="text-left font-semibold px-4 py-3">Status</th>
                 <th className="text-center font-semibold px-4 py-3">Aksi</th>
               </tr>
             </thead>
             <tbody data-testid="notes-table-body">
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-slate-400 py-10">Tidak ada nota yang cocok dengan pencarian/filter</td></tr>
+                <tr><td colSpan={10} className="text-center text-slate-400 py-10">Tidak ada nota pada kategori ini</td></tr>
               )}
-              {filtered.map((n) => (
+              {filtered.map((n) => {
+                const act = lastActivity(n);
+                return (
                 <tr key={n.id} className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer" onClick={() => navigate(`/notes/${n.id}`)} data-testid={`note-row-${n.id}`}>
                   <td className="px-4 py-3 font-medium text-slate-800">{n.nomor_nota || <span className="text-slate-400 italic">Draft</span>}</td>
                   <td className="px-4 py-3">{n.customer?.nama || "-"}</td>
                   <td className="px-4 py-3 text-slate-600">{(n.facilities || []).map((f) => f.nama_cabang).filter(Boolean)[0] || "-"}</td>
                   {user.role !== "RCO" && <td className="px-4 py-3 text-slate-600">{n.area}</td>}
                   <td className="px-4 py-3 text-right tabular-nums">{formatRupiah(n.nilai_kewenangan_pemutus)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">{formatRupiah(n.total_kewajiban)}</td>
+                  <td className="px-4 py-3 text-slate-600 max-w-[220px]"><span className="line-clamp-2" title={act.text}>{act.text}</span></td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">{act.when || "-"}</td>
                   <td className="px-4 py-3"><StatusBadge status={n.status} /></td>
                   <td className="px-4 py-3 text-center">
                     <button className="text-[#00A0A0] hover:bg-[#E6F6F6] p-1.5 rounded" onClick={(e) => { e.stopPropagation(); navigate(`/notes/${n.id}`); }}>
@@ -307,7 +378,8 @@ export default function NotesList() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
