@@ -39,7 +39,7 @@ def export_notes_excel(notes: list, meta: dict = None) -> bytes:
     ws.title = "Nota Restruktur"
 
     headers = ["No", "Nomor Nota", "Nama Nasabah", "CIF", "Cabang", "Area", "Region", "Segmen", "Status",
-               "Nilai Kewenangan Pemutus", "Total OS Pokok", "Total OS Margin", "Total Penalty",
+               "Total OS Pokok", "Total OS Margin", "Total Penalty",
                "Total Kewajiban", "Pemutus", "Tanggal Approved"]
     ncol = len(headers)
     last_col = get_column_letter(ncol)
@@ -78,7 +78,7 @@ def export_notes_excel(notes: list, meta: dict = None) -> bytes:
         c.border = border
     ws.row_dimensions[header_row].height = 30
 
-    money_cols = (10, 11, 12, 13, 14)
+    money_cols = (10, 11, 12, 13)
     r = header_row
     for idx, n in enumerate(notes, 1):
         r += 1
@@ -89,7 +89,7 @@ def export_notes_excel(notes: list, meta: dict = None) -> bytes:
         segmen = ", ".join(sorted({f.get("segmen", "") for f in facs if f.get("segmen")}))
         row_vals = [
             idx, n.get("nomor_nota", ""), cust.get("nama", ""), cif, cabang, n.get("area", ""), n.get("region", ""),
-            segmen, n.get("status", ""), n.get("nilai_kewenangan_pemutus", 0),
+            segmen, n.get("status", ""),
             n.get("total_os_pokok", 0), n.get("total_os_margin", 0), n.get("total_penalty", 0),
             n.get("total_kewajiban", 0), n.get("final_approver_nama", "") or "-",
             n.get("approved_date", "") or "-",
@@ -121,11 +121,10 @@ def export_notes_excel(notes: list, meta: dict = None) -> bytes:
         tot.fill = PatternFill("solid", fgColor=GOLD)
         tot.alignment = Alignment(horizontal="right", vertical="center")
         sums = {
-            10: sum(float(n.get("nilai_kewenangan_pemutus", 0) or 0) for n in notes),
-            11: sum(float(n.get("total_os_pokok", 0) or 0) for n in notes),
-            12: sum(float(n.get("total_os_margin", 0) or 0) for n in notes),
-            13: sum(float(n.get("total_penalty", 0) or 0) for n in notes),
-            14: sum(float(n.get("total_kewajiban", 0) or 0) for n in notes),
+            10: sum(float(n.get("total_os_pokok", 0) or 0) for n in notes),
+            11: sum(float(n.get("total_os_margin", 0) or 0) for n in notes),
+            12: sum(float(n.get("total_penalty", 0) or 0) for n in notes),
+            13: sum(float(n.get("total_kewajiban", 0) or 0) for n in notes),
         }
         for col in range(1, ncol + 1):
             cc = ws.cell(row=r, column=col)
@@ -139,7 +138,7 @@ def export_notes_excel(notes: list, meta: dict = None) -> bytes:
             elif col > 1:
                 cc.fill = PatternFill("solid", fgColor=GOLD)
 
-    widths = [5, 24, 24, 14, 26, 20, 20, 14, 22, 24, 18, 18, 16, 20, 24, 16]
+    widths = [5, 24, 24, 14, 26, 20, 20, 14, 22, 18, 18, 16, 20, 24, 16]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

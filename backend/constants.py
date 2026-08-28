@@ -39,7 +39,7 @@ AKAD = {
 
 KEPADA = ["ACRM", "RCRM", "GH RCG"]
 
-PENILAI_JAMINAN = ["Internal", "AFO", "RFO", "KJPP"]
+PENILAI_JAMINAN = ["Internal (AFO/RFO)", "KJPP"]
 
 KEMAMPUAN_BAYAR = [
     "Terdapat bukti pendapatan nasabah/slip gaji",
@@ -70,10 +70,6 @@ DOCUMENT_TYPES = [
     {"key": "surat_permohonan_ktp", "label": "Surat Permohonan Nasabah + KTP Nasabah", "required": True},
     {"key": "laporan_agunan", "label": "Laporan Penilaian Agunan", "required": False, "required_if_fix_asset": True},
     {"key": "bi_checking", "label": "BI Checking / iDeb Nasabah", "required": True},
-    {"key": "lainnya_1", "label": "Dokumen lainnya 1", "required": False},
-    {"key": "lainnya_2", "label": "Dokumen lainnya 2", "required": False},
-    {"key": "lainnya_3", "label": "Dokumen lainnya 3", "required": False},
-    {"key": "lainnya_4", "label": "Dokumen lainnya 4", "required": False},
 ]
 
 SYARAT_AKAD = [

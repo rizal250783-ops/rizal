@@ -125,6 +125,20 @@ async def push_notification(user_id, message, pengirim="", ntype="info"):
     })
 
 
+async def stage_assignees(note, stage):
+    """User id yang bertanggung jawab pada suatu tahap (untuk notifikasi)."""
+    if not stage:
+        return []
+    level = stage[0]
+    if level == "ACRM":
+        return [u["id"] async for u in db.users.find({"role": "ACRM", "area": note.get("area"), "status": "aktif"})]
+    if level == "RCRM":
+        return [u["id"] async for u in db.users.find({"role": "RCRM", "region": note.get("region"), "status": "aktif"})]
+    if level == "RCG":
+        return [u["id"] async for u in db.users.find({"nip": C.IMMADHA_NIP})]
+    return []
+
+
 # =============================================================
 #  AUTH
 # =============================================================
@@ -839,6 +853,12 @@ async def submit_note(nid: str, user: dict = Depends(require_roles("RCO"))):
         # notify RCG
         rcg_ids = [u["id"] async for u in db.users.find({"role": "RCG"})]
         await notify(rcg_ids, note, f"Nota {note['nomor_nota']} memerlukan eskalasi di atas RCG (nilai melebihi kewenangan).")
+    else:
+        # notify penanggung jawab tahap pertama (ACRM/RCRM/RCG) bahwa ada nota masuk
+        first_recip = await stage_assignees(note, stages[0]) if stages else []
+        if first_recip:
+            verb = "diputuskan" if stages[0][1] == "decide" else "direview"
+            await notify(first_recip, note, f"Nota restruktur {note['nomor_nota']} masuk untuk {verb} oleh Anda.")
     await audit(user, "submit_note", "note", nid, None, {"status": status})
     return await db.notes.find_one({"id": nid}, NO_ID)
 
@@ -846,6 +866,7 @@ async def submit_note(nid: str, user: dict = Depends(require_roles("RCO"))):
 class ActionReq(BaseModel):
     decision: str  # forward | approve | reject | revisi
     catatan: Optional[str] = ""
+    disposisi: Optional[str] = ""
 
 
 @api.post("/notes/{nid}/action")
@@ -909,12 +930,17 @@ async def note_action(nid: str, req: ActionReq, user: dict = Depends(current_use
 
     if action == "decide":
         # finalize
+        if not (req.disposisi or "").strip():
+            raise HTTPException(status_code=400, detail="Disposisi Pemutus wajib diisi")
         limit_used = {"ACRM": None, "RCRM": None, "RCG": None}
         acrm_limit, rcrm_limit, _, _ = await get_limits(note)
         lu = {"ACRM": acrm_limit, "RCRM": rcrm_limit, "RCG": user.get("limit_pemutus", 0)}.get(level, 0)
         adate, atime = d, t
+        disposisi_text = req.disposisi.strip()
+        ap = {**ap, "disposisi": disposisi_text}
         upd = {
             "status": "Final Approved", "read_only": True, "stage_index": new_idx,
+            "disposisi_pemutus": disposisi_text,
             "final_approver_id": user["id"], "final_approver_nama": user["nama"], "final_approver_nip": user["nip"],
             "final_approver_jabatan": user.get("jabatan"), "approved_at": now_iso(),
             "approved_date": adate, "approved_time": atime, "limit_pemutus_used": lu,
@@ -929,6 +955,11 @@ async def note_action(nid: str, req: ActionReq, user: dict = Depends(current_use
     next_stage = stages[new_idx]
     status = status_for_stage(next_stage)
     await db.notes.update_one({"id": nid}, {"$set": {"stage_index": new_idx, "status": status, "updated_at": now_iso()}, "$push": {"approvals": ap}})
+    # notify penanggung jawab tahap berikutnya
+    recip = await stage_assignees(note, next_stage)
+    if recip:
+        verb = "diputuskan" if next_stage[1] == "decide" else "direview"
+        await notify(recip, note, f"Nota restruktur {note['nomor_nota']} diteruskan ke Anda untuk {verb}.")
     await audit(user, "forward_note", "note", nid, None, {"status": status})
     return await db.notes.find_one({"id": nid}, NO_ID)
 

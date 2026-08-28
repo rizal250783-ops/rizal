@@ -18,6 +18,7 @@ export default function NoteDetail() {
   const [note, setNote] = useState(null);
   const [actionModal, setActionModal] = useState(null); // {decision}
   const [catatan, setCatatan] = useState("");
+  const [disposisi, setDisposisi] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = () => api.get(`/notes/${id}`).then((r) => setNote(r.data)).catch((e) => { toast.error(apiError(e)); navigate("/notes"); });
@@ -50,9 +51,9 @@ export default function NoteDetail() {
   const doAction = async () => {
     setBusy(true);
     try {
-      await api.post(`/notes/${id}/action`, { decision: actionModal.decision, catatan });
+      await api.post(`/notes/${id}/action`, { decision: actionModal.decision, catatan, disposisi });
       toast.success("Aksi berhasil");
-      setActionModal(null); setCatatan(""); load();
+      setActionModal(null); setCatatan(""); setDisposisi(""); load();
     } catch (e) { toast.error(apiError(e)); }
     finally { setBusy(false); }
   };
@@ -125,7 +126,7 @@ export default function NoteDetail() {
             ["Nomor Nota", note.nomor_nota || "-"],
             ["Dari", note.dari],
             ["Tanggal", note.tanggal_nota],
-            ["Kepada", note.kepada || "-"],
+            ["Pemutus", note.kepada || "-"],
             ["Reff", `Surat Permohonan Nasabah tanggal ${note.reff_tanggal || "-"}`],
             ["Perihal", note.perihal],
           ]} />
@@ -147,14 +148,13 @@ export default function NoteDetail() {
               <Mini label="Total OS Margin" value={note.total_os_margin} />
               <Mini label="Total Penalty" value={note.total_penalty} />
               <Mini label="Total Kewajiban" value={note.total_kewajiban} />
-              <Mini label="Nilai Kewenangan Pemutus" value={note.nilai_kewenangan_pemutus} highlight />
             </div>
           </Block>
 
           <Block title="Agunan / Jaminan">
             {note.has_fix_asset && note.collaterals?.length
               ? <Table head={["Jenis", "Nilai Pasar", "Nilai Likuidasi", "CCR Pasar", "CCR Likuidasi", "Penilai"]}
-                  rows={note.collaterals.map((c) => [c.jenis, formatRupiah(c.nilai_pasar), formatRupiah(c.nilai_likuidasi), `${c.ccr_pasar}%`, `${c.ccr_likuidasi}%`, c.penilai])} />
+                  rows={note.collaterals.map((c) => [c.jenis, formatRupiah(c.nilai_pasar), formatRupiah(c.nilai_likuidasi), `${c.ccr_pasar}%`, `${c.ccr_likuidasi}%`, c.penilai === "KJPP" && c.nama_kjpp ? `KJPP - ${c.nama_kjpp}` : c.penilai])} />
               : <p className="text-slate-500">Tidak ada jaminan fix asset</p>}
           </Block>
 
@@ -173,6 +173,7 @@ export default function NoteDetail() {
             <KV rows={[
               ["Profil / Kondisi Usaha", note.analysis?.profil],
               ["Karakter", note.analysis?.karakter],
+              ["Penyebab Nasabah Bermasalah", note.analysis?.penyebab_bermasalah],
               ["Kemampuan Bayar", note.analysis?.kemampuan_bayar],
               ["Informasi Jaminan & CCR", note.analysis?.informasi_jaminan],
               ["TBO", note.analysis?.tbo],
@@ -184,6 +185,12 @@ export default function NoteDetail() {
             <Table head={["Jenis Fasilitas", "Akad", "Tujuan", "OS Pokok", "OS Margin", "Jangka Waktu"]}
               rows={(note.proposals || []).map((p) => [p.jenis_fasilitas, p.akad, p.tujuan, formatRupiah(p.os_pokok), formatRupiah(p.os_margin), `${p.tgl_mulai || "-"} s/d ${p.tgl_akhir || "-"} ${p.durasi ? `(${p.durasi})` : ""}`])} />
           </Block>
+
+          {note.disposisi_pemutus && (
+            <Block title="Disposisi Pemutus">
+              <p className="text-slate-800 whitespace-pre-line" data-testid="disposisi-pemutus">{note.disposisi_pemutus}</p>
+            </Block>
+          )}
 
           <Block title="Riwayat Persetujuan">
             <Table head={["User", "Role", "Fungsi", "Keputusan", "Catatan", "Waktu"]}
@@ -198,7 +205,6 @@ export default function NoteDetail() {
                   ["Pemutus", `${note.final_approver_nama} — NIP ${note.final_approver_nip}`],
                   ["Jabatan Pemutus", note.final_approver_jabatan],
                   ["Level Pemutus", note.final_approver_level],
-                  ["Nilai Kewenangan Pemutus", formatRupiah(note.nilai_kewenangan_pemutus)],
                   ["Limit Pemutus Digunakan", formatRupiah(note.limit_pemutus_used)],
                   ["Tanggal & Jam Approved", `${note.approved_date} ${note.approved_time}`],
                 ]} />
@@ -212,16 +218,25 @@ export default function NoteDetail() {
       </div>
 
       {actionModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setActionModal(null)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setActionModal(null); setCatatan(""); setDisposisi(""); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()} data-testid="action-modal">
             <h3 className="font-display font-bold text-lg mb-1 capitalize">
-              {{ approve: "Setujui Nota", forward: "Teruskan Nota", revisi: "Kembalikan untuk Revisi", reject: "Tolak Nota" }[actionModal.decision]}
+              {{ approve: "Disposisi Pemutus", forward: "Teruskan Nota", revisi: "Kembalikan untuk Revisi", reject: "Tolak Nota" }[actionModal.decision]}
             </h3>
-            <p className="text-sm text-slate-500 mb-4">Tambahkan catatan {actionModal.decision === "approve" || actionModal.decision === "forward" ? "(opsional)" : "(wajib)"}.</p>
-            <textarea className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mb-4 outline-none focus:border-[#00A0A0]" rows={3} value={catatan} onChange={(e) => setCatatan(e.target.value)} data-testid="action-catatan" />
+            {actionModal.decision === "approve" ? (
+              <>
+                <p className="text-sm text-slate-500 mb-4">Isi Disposisi Pemutus <b>(wajib)</b>. Disposisi akan tercatat otomatis pada nota.</p>
+                <textarea className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mb-4 outline-none focus:border-[#00A0A0]" rows={4} value={disposisi} onChange={(e) => setDisposisi(e.target.value)} placeholder="Tuliskan disposisi/keputusan pemutus..." data-testid="action-disposisi" />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-slate-500 mb-4">Tambahkan catatan {actionModal.decision === "forward" ? "(opsional)" : "(wajib)"}.</p>
+                <textarea className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mb-4 outline-none focus:border-[#00A0A0]" rows={3} value={catatan} onChange={(e) => setCatatan(e.target.value)} data-testid="action-catatan" />
+              </>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => setActionModal(null)} className="flex-1 border border-slate-300 rounded-md py-2.5 text-sm font-semibold">Batal</button>
-              <button onClick={doAction} disabled={busy || ((actionModal.decision === "revisi" || actionModal.decision === "reject") && !catatan)} className="flex-1 bg-[#00A0A0] text-white rounded-md py-2.5 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5" data-testid="action-confirm">
+              <button onClick={() => { setActionModal(null); setCatatan(""); setDisposisi(""); }} className="flex-1 border border-slate-300 rounded-md py-2.5 text-sm font-semibold">Batal</button>
+              <button onClick={doAction} disabled={busy || (actionModal.decision === "approve" && !disposisi.trim()) || ((actionModal.decision === "revisi" || actionModal.decision === "reject") && !catatan)} className="flex-1 bg-[#00A0A0] text-white rounded-md py-2.5 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5" data-testid="action-confirm">
                 {busy && <Loader2 size={15} className="animate-spin" />} Konfirmasi
               </button>
             </div>

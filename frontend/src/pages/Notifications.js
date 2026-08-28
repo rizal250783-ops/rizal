@@ -7,7 +7,14 @@ export default function Notifications() {
   const [data, setData] = useState(null);
 
   const load = () => api.get("/notifications").then((r) => setData(r.data)).catch(() => setData({ items: [], unread: 0 }));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    (async () => {
+      await load();
+      // Buka halaman notifikasi => tanda notifikasi (badge) hilang
+      try { await api.post("/notifications/read-all"); } catch { /* ignore */ }
+      window.dispatchEvent(new Event("notif-read"));
+    })();
+  }, []);
 
   const markRead = async (id) => { await api.post(`/notifications/${id}/read`); load(); };
   const markAll = async () => { await api.post("/notifications/read-all"); load(); };
@@ -25,7 +32,7 @@ export default function Notifications() {
             <div className={`w-2 h-2 rounded-full mt-2 ${n.is_read ? "bg-slate-300" : "bg-[#F0B43C]"}`} />
             <div className="flex-1">
               <p className="text-sm text-slate-800">{n.message}</p>
-              <div className="text-xs text-slate-500 mt-1">{n.nomor_nota} • {n.nama_nasabah} • {n.tanggal} {n.jam}</div>
+              <div className="text-xs text-slate-500 mt-1">{[n.nomor_nota, n.nama_nasabah, `${n.tanggal || ""} ${n.jam || ""}`.trim()].filter(Boolean).join(" • ")}</div>
             </div>
             {!n.is_read && <button onClick={() => markRead(n.id)} className="text-[#00A0A0] hover:bg-[#E6F6F6] p-1.5 rounded" title="Tandai dibaca"><Check size={16} /></button>}
           </div>

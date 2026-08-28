@@ -1,559 +1,634 @@
 #!/usr/bin/env python3
 """
-Backend test for RCG Digital Restructuring - Master Data CRUD, Holiday History, and Access-Denied Notifications
-Test all scenarios from the review request.
+Backend Testing for RCG Digital Restructuring - Nota Corrections
+Tests: Disposisi Pemutus mandatory, notifications routing, Excel/PDF reports
 """
+
 import requests
 import json
-from typing import Optional
+from datetime import datetime
 
 # Configuration
 BASE_URL = "https://github-import-setup-4.preview.emergentagent.com/api"
 DEFAULT_PASSWORD = "bsi12345"
 
-# Test users
-ADMIN_NIP = "2183008345"  # SYAMSU RIZAL (RCG admin)
-NON_ADMIN_RCG_NIP = "2180007674"  # RATMIYATI (RCG non-admin)
-RCRM_NIP = "2188017223"  # RCRM user
+# Test credentials
+ADMIN_NIP = "2183008345"  # SYAMSU RIZAL
+RCO_NIP = "2193020835"    # UCHTI APRILINA
+ACRM_NIP = "2188009250"   # Need to verify area match
+RCRM_NIP = "2188017223"   # Need to verify region match
+IMMADHA_NIP = "2175007386"  # RCG Group Head
 
-# Test data storage
-test_data = {
-    "region_id": None,
-    "area_id": None,
-    "branch_id": None,
-    "holiday_id": None,
-    "cascade_region_id": None,
-    "cascade_area_id": None,
-    "cascade_branch_id": None,
-}
+# Test results
+test_results = []
 
-def login(nip: str, password: str = DEFAULT_PASSWORD) -> Optional[str]:
-    """Login and return token"""
+def log_test(test_num, description, passed, details=""):
+    """Log test result"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    result = f"{test_num}. {status}: {description}"
+    if details:
+        result += f"\n   Details: {details}"
+    test_results.append(result)
+    print(result)
+    return passed
+
+def login(nip, password=DEFAULT_PASSWORD):
+    """Login and return token and user info"""
     try:
-        resp = requests.post(f"{BASE_URL}/auth/login", json={"nip": nip, "password": password}, timeout=10)
+        resp = requests.post(f"{BASE_URL}/auth/login", json={"nip": nip, "password": password}, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            return data.get("token")
+            return data["token"], data["user"]
         else:
-            print(f"❌ Login failed for NIP {nip}: {resp.status_code} - {resp.text}")
+            print(f"Login failed for NIP {nip}: {resp.status_code} - {resp.text}")
+            return None, None
+    except Exception as e:
+        print(f"Login error for NIP {nip}: {e}")
+        return None, None
+
+def get_headers(token):
+    """Get authorization headers"""
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+def create_minimal_note(token, area, region, os_pokok=1_500_000_000):
+    """Create a minimal valid note for testing"""
+    headers = get_headers(token)
+    
+    # Minimal valid note payload
+    payload = {
+        "nomor_manual": str(datetime.now().timestamp())[-5:],  # Last 5 digits of timestamp
+        "kepada": "ACRM",
+        "reff_tanggal": "01/01/2026",
+        "customer": {
+            "nama": "PT TEST CUSTOMER NOTA",
+            "alamat": "Jl. Test No. 123",
+            "bidang_usaha": "Perdagangan"
+        },
+        "facilities": [{
+            "cif": "1234567890",
+            "nomor_loan": "TEST001",
+            "kolektibilitas": "3A",
+            "segmen": "RETAIL",
+            "produk": "SME",
+            "akad": "Murabahah",
+            "nama_cabang": "KC Banda Aceh",
+            "os_pokok": os_pokok,
+            "os_margin": 100_000_000,
+            "penalty": 10_000_000,
+            "tanggal_akad": "01/01/2024",
+            "tanggal_jatuh_tempo": "01/01/2027"
+        }],
+        "has_fix_asset": True,
+        "collaterals": [{
+            "jenis": "Tanah dan Bangunan",
+            "penilai": "KJPP",
+            "nama_kjpp": "KJPP Test Appraisal",
+            "nomor_laporan": "LAP/001/2026",
+            "nilai_pasar": 3_000_000_000,
+            "nilai_likuidasi": 2_400_000_000
+        }],
+        "rac": [
+            {"parameter": "Karakter = Kooperatif dan memiliki itikad baik", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Usaha = Masih berjalan minimal 6 bulan terakhir", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Kemampuan Bayar = Mampu membayar angsuran baru dari cash flow", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Agunan = Legal dan marketable", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Prospek = Terdapat potensi pemulihan usaha", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Fraud = Tidak terindikasi fraud", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Legalitas = Dokumen lengkap dan valid", "status": "Terpenuhi", "keterangan": ""},
+            {"parameter": "Outcome Restrukturisasi = Diperkirakan memperbaiki kualitas pembiayaan", "status": "Terpenuhi", "keterangan": ""}
+        ],
+        "analysis": {
+            "kemampuan_bayar": "Terdapat bukti pendapatan nasabah/slip gaji",
+            "penyebab_bermasalah": "Nasabah mengalami penurunan omzet usaha akibat kondisi ekonomi"
+        },
+        "proposals": [{
+            "cif": "1234567890",
+            "nomor_loan": "TEST001",
+            "tgl_mulai": "01/02/2026",
+            "tgl_akhir": "01/02/2029",
+            "angsuran_pokok": 50_000_000,
+            "angsuran_margin": 10_000_000
+        }],
+        "documents": [
+            {"document_type": "foto_ots", "file_path": "test_foto.jpg", "uploaded_at": "2026-01-01T00:00:00Z"},
+            {"document_type": "surat_permohonan_ktp", "file_path": "test_surat.pdf", "uploaded_at": "2026-01-01T00:00:00Z"},
+            {"document_type": "laporan_agunan", "file_path": "test_laporan.pdf", "uploaded_at": "2026-01-01T00:00:00Z"},
+            {"document_type": "bi_checking", "file_path": "test_bi.pdf", "uploaded_at": "2026-01-01T00:00:00Z"}
+        ]
+    }
+    
+    try:
+        resp = requests.post(f"{BASE_URL}/notes", json=payload, headers=headers, timeout=30)
+        if resp.status_code == 200:
+            return resp.json()
+        else:
+            print(f"Create note failed: {resp.status_code} - {resp.text}")
             return None
     except Exception as e:
-        print(f"❌ Login exception for NIP {nip}: {e}")
+        print(f"Create note error: {e}")
         return None
 
-def headers(token: str) -> dict:
-    """Return authorization headers"""
-    return {"Authorization": f"Bearer {token}"}
-
-def test_case(num: str, description: str, passed: bool, details: str = ""):
-    """Print test case result"""
-    status = "✅ PASS" if passed else "❌ FAIL"
-    print(f"\n{status} - Case {num}: {description}")
-    if details:
-        print(f"  Details: {details}")
-
-# ============================================================
-# PART 1 - Region CRUD (as SYAMSU RIZAL)
-# ============================================================
-def test_part1_region_crud():
-    print("\n" + "="*80)
-    print("PART 1 - REGION CRUD (as SYAMSU RIZAL)")
-    print("="*80)
-    
-    token = login(ADMIN_NIP)
-    if not token:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h = headers(token)
-    
-    # Case 1: POST /api/regions {"nama":"RO TEST ZONE"} → expect 200
-    print("\n--- Case 1: Create region 'RO TEST ZONE' ---")
-    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO TEST ZONE"}, headers=h, timeout=10)
-    if resp.status_code == 200:
-        data = resp.json()
-        test_data["region_id"] = data.get("id")
-        test_case("1", "POST /api/regions 'RO TEST ZONE'", True, f"Status: {resp.status_code}, ID: {test_data['region_id']}")
-    else:
-        test_case("1", "POST /api/regions 'RO TEST ZONE'", False, f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
-        return False
-    
-    # Case 2: POST /api/regions {"nama":"RO TEST ZONE"} again → expect 400 (duplicate)
-    print("\n--- Case 2: Create duplicate region 'RO TEST ZONE' ---")
-    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO TEST ZONE"}, headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("2", "POST /api/regions duplicate 'RO TEST ZONE'", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 3: PUT /api/regions/{id} {"nama":"RO TEST ZONE 2"} → expect 200 (rename)
-    print("\n--- Case 3: Rename region to 'RO TEST ZONE 2' ---")
-    resp = requests.put(f"{BASE_URL}/regions/{test_data['region_id']}", 
-                       json={"nama": "RO TEST ZONE 2"}, headers=h, timeout=10)
-    passed = resp.status_code == 200
-    test_case("3", "PUT /api/regions rename to 'RO TEST ZONE 2'", passed, 
-              f"Status: {resp.status_code}, Expected: 200")
-    
-    return True
-
-# ============================================================
-# PART 2 - Area CRUD (as SYAMSU RIZAL)
-# ============================================================
-def test_part2_area_crud():
-    print("\n" + "="*80)
-    print("PART 2 - AREA CRUD (as SYAMSU RIZAL)")
-    print("="*80)
-    
-    token = login(ADMIN_NIP)
-    if not token:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h = headers(token)
-    
-    # Case 4: POST /api/areas {"nama":"Area Test A","region":"RO TEST ZONE 2"} → expect 200
-    print("\n--- Case 4: Create area 'Area Test A' under 'RO TEST ZONE 2' ---")
-    resp = requests.post(f"{BASE_URL}/areas", 
-                        json={"nama": "Area Test A", "region": "RO TEST ZONE 2"}, 
-                        headers=h, timeout=10)
-    if resp.status_code == 200:
-        data = resp.json()
-        test_data["area_id"] = data.get("id")
-        test_case("4", "POST /api/areas 'Area Test A'", True, 
-                 f"Status: {resp.status_code}, ID: {test_data['area_id']}")
-    else:
-        test_case("4", "POST /api/areas 'Area Test A'", False, 
-                 f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
-        return False
-    
-    # Case 5: POST /api/areas {"nama":"Area Test A","region":"RO TEST ZONE 2"} again → expect 400 (duplicate)
-    print("\n--- Case 5: Create duplicate area 'Area Test A' ---")
-    resp = requests.post(f"{BASE_URL}/areas", 
-                        json={"nama": "Area Test A", "region": "RO TEST ZONE 2"}, 
-                        headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("5", "POST /api/areas duplicate 'Area Test A'", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 6: POST /api/areas {"nama":"Area Test B","region":"REGION TIDAK ADA"} → expect 400 (invalid region)
-    print("\n--- Case 6: Create area with invalid region ---")
-    resp = requests.post(f"{BASE_URL}/areas", 
-                        json={"nama": "Area Test B", "region": "REGION TIDAK ADA"}, 
-                        headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("6", "POST /api/areas with invalid region", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    return True
-
-# ============================================================
-# PART 3 - Branch CRUD (as SYAMSU RIZAL)
-# ============================================================
-def test_part3_branch_crud():
-    print("\n" + "="*80)
-    print("PART 3 - BRANCH CRUD (as SYAMSU RIZAL)")
-    print("="*80)
-    
-    token = login(ADMIN_NIP)
-    if not token:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h = headers(token)
-    
-    # Case 7: POST /api/branches → expect 200
-    print("\n--- Case 7: Create branch 'KC TEST SATU' ---")
-    resp = requests.post(f"{BASE_URL}/branches", 
-                        json={
-                            "kode_outlet_bsi": "TST0001",
-                            "nama_cabang": "KC TEST SATU",
-                            "jenis_outlet": "KC",
-                            "area": "Area Test A"
-                        }, 
-                        headers=h, timeout=10)
-    if resp.status_code == 200:
-        data = resp.json()
-        test_data["branch_id"] = data.get("id")
-        test_case("7", "POST /api/branches 'KC TEST SATU'", True, 
-                 f"Status: {resp.status_code}, ID: {test_data['branch_id']}")
-    else:
-        test_case("7", "POST /api/branches 'KC TEST SATU'", False, 
-                 f"Status: {resp.status_code}, Expected: 200, Body: {resp.text}")
-        return False
-    
-    # Case 8: POST /api/branches with same kode_outlet_bsi "TST0001" → expect 400 (duplicate kode)
-    print("\n--- Case 8: Create branch with duplicate kode_outlet_bsi ---")
-    resp = requests.post(f"{BASE_URL}/branches", 
-                        json={
-                            "kode_outlet_bsi": "TST0001",
-                            "nama_cabang": "KC TEST DUA",
-                            "jenis_outlet": "KC",
-                            "area": "Area Test A"
-                        }, 
-                        headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("8", "POST /api/branches duplicate kode_outlet_bsi", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 9: POST /api/branches with invalid area → expect 400
-    print("\n--- Case 9: Create branch with invalid area ---")
-    resp = requests.post(f"{BASE_URL}/branches", 
-                        json={
-                            "kode_outlet_bsi": "TST0002",
-                            "nama_cabang": "X",
-                            "jenis_outlet": "KC",
-                            "area": "Area Tidak Ada"
-                        }, 
-                        headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("9", "POST /api/branches with invalid area", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 10: PUT /api/branches/{id} → expect 200
-    print("\n--- Case 10: Update branch 'KC TEST SATU EDIT' ---")
-    resp = requests.put(f"{BASE_URL}/branches/{test_data['branch_id']}", 
-                       json={
-                           "kode_outlet_bsi": "TST0001",
-                           "nama_cabang": "KC TEST SATU EDIT",
-                           "jenis_outlet": "KCP",
-                           "area": "Area Test A"
-                       }, 
-                       headers=h, timeout=10)
-    passed = resp.status_code == 200
-    test_case("10", "PUT /api/branches update to 'KC TEST SATU EDIT'", passed, 
-              f"Status: {resp.status_code}, Expected: 200")
-    
-    return True
-
-# ============================================================
-# PART 4 - Cascade & delete guards (as SYAMSU RIZAL)
-# ============================================================
-def test_part4_cascade_and_guards():
-    print("\n" + "="*80)
-    print("PART 4 - CASCADE & DELETE GUARDS (as SYAMSU RIZAL)")
-    print("="*80)
-    
-    token = login(ADMIN_NIP)
-    if not token:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h = headers(token)
-    
-    # Case 11: DELETE /api/regions/{RO TEST ZONE 2 id} while it still has "Area Test A" → expect 400
-    print("\n--- Case 11: Try to delete region that still has areas ---")
-    resp = requests.delete(f"{BASE_URL}/regions/{test_data['region_id']}", headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("11", "DELETE region with existing areas (guard)", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 12: DELETE /api/areas/{Area Test A id} while it still has branch → expect 400
-    print("\n--- Case 12: Try to delete area that still has branches ---")
-    resp = requests.delete(f"{BASE_URL}/areas/{test_data['area_id']}", headers=h, timeout=10)
-    passed = resp.status_code == 400
-    test_case("12", "DELETE area with existing branches (guard)", passed, 
-              f"Status: {resp.status_code}, Expected: 400, Message: {resp.json().get('detail', '') if passed else resp.text}")
-    
-    # Case 13: Cleanup + cascade verification
-    print("\n--- Case 13: Cleanup - delete branch, then area, then region ---")
-    
-    # Delete branch
-    resp = requests.delete(f"{BASE_URL}/branches/{test_data['branch_id']}", headers=h, timeout=10)
-    passed_branch = resp.status_code == 200
-    print(f"  13a. DELETE branch: Status {resp.status_code}, Expected: 200 - {'✅' if passed_branch else '❌'}")
-    
-    # Verify area still exists
-    resp = requests.get(f"{BASE_URL}/areas?region=RO TEST ZONE 2", headers=h, timeout=10)
-    areas = resp.json() if resp.status_code == 200 else []
-    area_exists = any(a.get("nama") == "Area Test A" for a in areas)
-    print(f"  13b. GET /api/areas?region=RO TEST ZONE 2: Area Test A exists: {area_exists} - {'✅' if area_exists else '❌'}")
-    
-    # Delete area
-    resp = requests.delete(f"{BASE_URL}/areas/{test_data['area_id']}", headers=h, timeout=10)
-    passed_area = resp.status_code == 200
-    print(f"  13c. DELETE area: Status {resp.status_code}, Expected: 200 - {'✅' if passed_area else '❌'}")
-    
-    # Delete region
-    resp = requests.delete(f"{BASE_URL}/regions/{test_data['region_id']}", headers=h, timeout=10)
-    passed_region = resp.status_code == 200
-    print(f"  13d. DELETE region: Status {resp.status_code}, Expected: 200 - {'✅' if passed_region else '❌'}")
-    
-    passed = passed_branch and area_exists and passed_area and passed_region
-    test_case("13", "Cleanup cascade verification", passed, 
-              f"Branch deleted: {passed_branch}, Area persisted: {area_exists}, Area deleted: {passed_area}, Region deleted: {passed_region}")
-    
-    # Case 14: Rename cascade check
-    print("\n--- Case 14: Rename cascade check ---")
-    
-    # Create region "RO CAS"
-    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "RO CAS"}, headers=h, timeout=10)
-    if resp.status_code == 200:
-        test_data["cascade_region_id"] = resp.json().get("id")
-        print(f"  14a. Created region 'RO CAS': ID {test_data['cascade_region_id']} - ✅")
-    else:
-        print(f"  14a. Failed to create region 'RO CAS': {resp.status_code} - ❌")
-        return False
-    
-    # Create area "Area Cas" under "RO CAS"
-    resp = requests.post(f"{BASE_URL}/areas", 
-                        json={"nama": "Area Cas", "region": "RO CAS"}, 
-                        headers=h, timeout=10)
-    if resp.status_code == 200:
-        test_data["cascade_area_id"] = resp.json().get("id")
-        print(f"  14b. Created area 'Area Cas': ID {test_data['cascade_area_id']} - ✅")
-    else:
-        print(f"  14b. Failed to create area 'Area Cas': {resp.status_code} - ❌")
-        return False
-    
-    # Create branch "CAS001" under "Area Cas"
-    resp = requests.post(f"{BASE_URL}/branches", 
-                        json={
-                            "kode_outlet_bsi": "CAS001",
-                            "nama_cabang": "KC CAS TEST",
-                            "jenis_outlet": "KC",
-                            "area": "Area Cas"
-                        }, 
-                        headers=h, timeout=10)
-    if resp.status_code == 200:
-        test_data["cascade_branch_id"] = resp.json().get("id")
-        print(f"  14c. Created branch 'CAS001': ID {test_data['cascade_branch_id']} - ✅")
-    else:
-        print(f"  14c. Failed to create branch 'CAS001': {resp.status_code} - ❌")
-        return False
-    
-    # Rename region to "RO CAS 2"
-    resp = requests.put(f"{BASE_URL}/regions/{test_data['cascade_region_id']}", 
-                       json={"nama": "RO CAS 2"}, headers=h, timeout=10)
-    passed_rename = resp.status_code == 200
-    print(f"  14d. Renamed region to 'RO CAS 2': Status {resp.status_code} - {'✅' if passed_rename else '❌'}")
-    
-    # Verify area.region updated
-    resp = requests.get(f"{BASE_URL}/areas?region=RO CAS 2", headers=h, timeout=10)
-    areas = resp.json() if resp.status_code == 200 else []
-    area_updated = any(a.get("nama") == "Area Cas" for a in areas)
-    print(f"  14e. GET /api/areas?region=RO CAS 2: Area Cas found: {area_updated} - {'✅' if area_updated else '❌'}")
-    
-    # Verify branch.region updated
-    resp = requests.get(f"{BASE_URL}/branches?area=Area Cas", headers=h, timeout=10)
-    branches = resp.json() if resp.status_code == 200 else []
-    branch_updated = False
-    if branches:
-        for b in branches:
-            if b.get("kode_outlet_bsi") == "CAS001":
-                branch_updated = b.get("region") == "RO CAS 2"
-                print(f"  14f. Branch CAS001 region: {b.get('region')} (expected: RO CAS 2) - {'✅' if branch_updated else '❌'}")
-                break
-    
-    # Cleanup cascade test data
-    requests.delete(f"{BASE_URL}/branches/{test_data['cascade_branch_id']}", headers=h, timeout=10)
-    requests.delete(f"{BASE_URL}/areas/{test_data['cascade_area_id']}", headers=h, timeout=10)
-    requests.delete(f"{BASE_URL}/regions/{test_data['cascade_region_id']}", headers=h, timeout=10)
-    print(f"  14g. Cleanup cascade test data - ✅")
-    
-    passed = passed_rename and area_updated and branch_updated
-    test_case("14", "Rename cascade check", passed, 
-              f"Region renamed: {passed_rename}, Area region updated: {area_updated}, Branch region updated: {branch_updated}")
-    
-    return True
-
-# ============================================================
-# PART 5 - Holiday history
-# ============================================================
-def test_part5_holiday_history():
-    print("\n" + "="*80)
-    print("PART 5 - HOLIDAY HISTORY (as SYAMSU RIZAL)")
-    print("="*80)
-    
-    token = login(ADMIN_NIP)
-    if not token:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h = headers(token)
-    
-    # Case 15: POST holiday, GET history, DELETE holiday, verify history
-    print("\n--- Case 15: Holiday history verification ---")
-    
-    # POST holiday
-    resp = requests.post(f"{BASE_URL}/holidays", 
-                        json={"tanggal": "2025-12-31", "keterangan": "Uji Riwayat"}, 
-                        headers=h, timeout=10)
-    if resp.status_code == 200:
-        test_data["holiday_id"] = resp.json().get("id")
-        print(f"  15a. POST /api/holidays: Status {resp.status_code}, ID {test_data['holiday_id']} - ✅")
-    else:
-        print(f"  15a. POST /api/holidays failed: Status {resp.status_code} - ❌")
-        test_case("15", "Holiday history", False, f"Failed to create holiday: {resp.status_code}")
-        return False
-    
-    # GET history - should contain add_holiday
-    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h, timeout=10)
-    if resp.status_code == 200:
-        history = resp.json()
-        add_entry = any(h.get("action") == "add_holiday" and h.get("entity_id") == test_data["holiday_id"] 
-                       for h in history)
-        print(f"  15b. GET /api/holidays/history: Status {resp.status_code}, Contains add_holiday: {add_entry} - {'✅' if add_entry else '❌'}")
-    else:
-        print(f"  15b. GET /api/holidays/history failed: Status {resp.status_code} - ❌")
-        add_entry = False
-    
-    # DELETE holiday
-    resp = requests.delete(f"{BASE_URL}/holidays/{test_data['holiday_id']}", headers=h, timeout=10)
-    delete_success = resp.status_code == 200
-    print(f"  15c. DELETE /api/holidays: Status {resp.status_code} - {'✅' if delete_success else '❌'}")
-    
-    # GET history - should now also contain delete_holiday
-    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h, timeout=10)
-    if resp.status_code == 200:
-        history = resp.json()
-        delete_entry = any(h.get("action") == "delete_holiday" and h.get("entity_id") == test_data["holiday_id"] 
-                          for h in history)
-        print(f"  15d. GET /api/holidays/history: Contains delete_holiday: {delete_entry} - {'✅' if delete_entry else '❌'}")
-    else:
-        print(f"  15d. GET /api/holidays/history failed: Status {resp.status_code} - ❌")
-        delete_entry = False
-    
-    passed = add_entry and delete_success and delete_entry
-    test_case("15", "Holiday history", passed, 
-              f"Add entry found: {add_entry}, Delete success: {delete_success}, Delete entry found: {delete_entry}")
-    
-    return True
-
-# ============================================================
-# PART 6 - Admin-only enforcement + access-denied NOTIFICATION
-# ============================================================
-def test_part6_admin_only_and_notifications():
-    print("\n" + "="*80)
-    print("PART 6 - ADMIN-ONLY ENFORCEMENT + ACCESS-DENIED NOTIFICATION")
-    print("="*80)
-    
-    # Case 16: Non-admin attempts
-    print("\n--- Case 16: Non-admin access attempts ---")
-    
-    # RATMIYATI (non-admin RCG)
-    token_ratmiyati = login(NON_ADMIN_RCG_NIP)
-    if not token_ratmiyati:
-        print("❌ CRITICAL: Cannot login as RATMIYATI")
-        return False
-    
-    h_ratmiyati = headers(token_ratmiyati)
-    
-    # POST /api/regions
-    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "TEST"}, headers=h_ratmiyati, timeout=10)
-    passed_regions = resp.status_code == 403
-    print(f"  16a. RATMIYATI POST /api/regions: Status {resp.status_code}, Expected: 403 - {'✅' if passed_regions else '❌'}")
-    
-    # POST /api/areas
-    resp = requests.post(f"{BASE_URL}/areas", json={"nama": "TEST", "region": "RO I ACEH"}, headers=h_ratmiyati, timeout=10)
-    passed_areas = resp.status_code == 403
-    print(f"  16b. RATMIYATI POST /api/areas: Status {resp.status_code}, Expected: 403 - {'✅' if passed_areas else '❌'}")
-    
-    # POST /api/branches
-    resp = requests.post(f"{BASE_URL}/branches", 
-                        json={"kode_outlet_bsi": "X", "nama_cabang": "X", "jenis_outlet": "KC", "area": "Area Banda Aceh"}, 
-                        headers=h_ratmiyati, timeout=10)
-    passed_branches = resp.status_code == 403
-    print(f"  16c. RATMIYATI POST /api/branches: Status {resp.status_code}, Expected: 403 - {'✅' if passed_branches else '❌'}")
-    
-    # GET /api/holidays/history
-    resp = requests.get(f"{BASE_URL}/holidays/history", headers=h_ratmiyati, timeout=10)
-    passed_history = resp.status_code == 403
-    print(f"  16d. RATMIYATI GET /api/holidays/history: Status {resp.status_code}, Expected: 403 - {'✅' if passed_history else '❌'}")
-    
-    # Case 17: RCRM user
-    print("\n--- Case 17: RCRM user access attempt ---")
-    
-    token_rcrm = login(RCRM_NIP)
-    if not token_rcrm:
-        print("❌ CRITICAL: Cannot login as RCRM")
-        return False
-    
-    h_rcrm = headers(token_rcrm)
-    
-    # POST /api/regions
-    resp = requests.post(f"{BASE_URL}/regions", json={"nama": "TEST"}, headers=h_rcrm, timeout=10)
-    passed_rcrm = resp.status_code == 403
-    print(f"  17. RCRM POST /api/regions: Status {resp.status_code}, Expected: 403 - {'✅' if passed_rcrm else '❌'}")
-    
-    # Case 18: Verify access-denied notifications
-    print("\n--- Case 18: Verify access-denied notifications ---")
-    
-    token_admin = login(ADMIN_NIP)
-    if not token_admin:
-        print("❌ CRITICAL: Cannot login as admin")
-        return False
-    
-    h_admin = headers(token_admin)
-    
-    # GET /api/notifications
-    resp = requests.get(f"{BASE_URL}/notifications", headers=h_admin, timeout=10)
-    if resp.status_code == 200:
-        data = resp.json()
-        items = data.get("items", [])
-        access_denied_notifs = [n for n in items if n.get("type") == "access_denied" 
-                               and "Percobaan akses fitur admin" in n.get("message", "")]
-        
-        print(f"  18. GET /api/notifications: Status {resp.status_code}, Total notifications: {len(items)}")
-        print(f"      Access-denied notifications found: {len(access_denied_notifs)}")
-        
-        if access_denied_notifs:
-            print(f"      Sample notification: {access_denied_notifs[0].get('message', '')}")
-            passed_notif = True
-        else:
-            print(f"      ❌ No access-denied notifications found")
-            passed_notif = False
-    else:
-        print(f"  18. GET /api/notifications failed: Status {resp.status_code} - ❌")
-        passed_notif = False
-    
-    passed = (passed_regions and passed_areas and passed_branches and passed_history and 
-              passed_rcrm and passed_notif)
-    test_case("16-18", "Admin-only enforcement + access-denied notifications", passed, 
-              f"All 403 checks: {passed_regions and passed_areas and passed_branches and passed_history and passed_rcrm}, Notifications: {passed_notif}")
-    
-    return True
-
-# ============================================================
-# MAIN TEST EXECUTION
-# ============================================================
 def main():
-    print("\n" + "="*80)
-    print("RCG DIGITAL RESTRUCTURING - MASTER DATA CRUD & HOLIDAY HISTORY TEST")
-    print("="*80)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Admin NIP: {ADMIN_NIP}")
-    print(f"Non-admin RCG NIP: {NON_ADMIN_RCG_NIP}")
-    print(f"RCRM NIP: {RCRM_NIP}")
+    print("=" * 80)
+    print("BACKEND TESTING: Nota Corrections (Disposisi, Notifications, Reports)")
+    print("=" * 80)
+    print()
     
-    results = []
+    # Step 1: Login as RCO and get area/region
+    print("SETUP: Logging in as RCO to get area/region...")
+    rco_token, rco_user = login(RCO_NIP)
+    if not rco_token:
+        print("❌ CRITICAL: Cannot login as RCO. Aborting tests.")
+        return
     
-    # Run all test parts
-    results.append(("PART 1 - Region CRUD", test_part1_region_crud()))
-    results.append(("PART 2 - Area CRUD", test_part2_area_crud()))
-    results.append(("PART 3 - Branch CRUD", test_part3_branch_crud()))
-    results.append(("PART 4 - Cascade & Guards", test_part4_cascade_and_guards()))
-    results.append(("PART 5 - Holiday History", test_part5_holiday_history()))
-    results.append(("PART 6 - Admin-only & Notifications", test_part6_admin_only_and_notifications()))
+    rco_area = rco_user.get("area")
+    rco_region = rco_user.get("region")
+    print(f"✓ RCO logged in: {rco_user.get('nama')} (NIP {RCO_NIP})")
+    print(f"  Area: {rco_area}, Region: {rco_region}")
+    print()
     
-    # Summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
+    # Step 2: Login as admin and find matching ACRM and RCRM
+    print("SETUP: Finding matching ACRM and RCRM...")
+    admin_token, admin_user = login(ADMIN_NIP)
+    if not admin_token:
+        print("❌ CRITICAL: Cannot login as admin. Aborting tests.")
+        return
     
-    passed_count = sum(1 for _, passed in results if passed)
-    total_count = len(results)
+    # Get users list
+    headers = get_headers(admin_token)
+    resp = requests.get(f"{BASE_URL}/users", headers=headers, timeout=30)
+    if resp.status_code != 200:
+        print(f"❌ CRITICAL: Cannot get users list. Status: {resp.status_code}")
+        return
     
-    for part_name, passed in results:
-        status = "✅ PASSED" if passed else "❌ FAILED"
-        print(f"{status} - {part_name}")
+    users = resp.json()
     
-    print(f"\nTotal: {passed_count}/{total_count} parts passed ({passed_count*100//total_count}%)")
+    # Find matching ACRM (same area as RCO)
+    acrm_user = None
+    for u in users:
+        if u.get("role") == "ACRM" and u.get("area") == rco_area and u.get("status") == "aktif":
+            acrm_user = u
+            break
     
-    if passed_count == total_count:
-        print("\n🎉 ALL TESTS PASSED!")
-        return 0
+    if not acrm_user:
+        print(f"❌ CRITICAL: No active ACRM found for area '{rco_area}'. Aborting tests.")
+        return
+    
+    acrm_nip = acrm_user["nip"]
+    print(f"✓ Found matching ACRM: {acrm_user.get('nama')} (NIP {acrm_nip}), Area: {acrm_user.get('area')}")
+    
+    # Find matching RCRM (same region as RCO)
+    rcrm_user = None
+    for u in users:
+        if u.get("role") == "RCRM" and u.get("region") == rco_region and u.get("status") == "aktif":
+            rcrm_user = u
+            break
+    
+    if not rcrm_user:
+        print(f"❌ CRITICAL: No active RCRM found for region '{rco_region}'. Aborting tests.")
+        return
+    
+    rcrm_nip = rcrm_user["nip"]
+    print(f"✓ Found matching RCRM: {rcrm_user.get('nama')} (NIP {rcrm_nip}), Region: {rcrm_user.get('region')}")
+    print()
+    
+    # Login as ACRM, RCRM, and IMMADHA
+    acrm_token, _ = login(acrm_nip)
+    rcrm_token, _ = login(rcrm_nip)
+    immadha_token, _ = login(IMMADHA_NIP)
+    
+    if not acrm_token or not rcrm_token or not immadha_token:
+        print("❌ CRITICAL: Cannot login as required approvers. Aborting tests.")
+        return
+    
+    print("✓ All approvers logged in successfully")
+    print()
+    
+    # ========================================================================
+    # TEST A: Disposisi Pemutus mandatory on approve (small amount)
+    # ========================================================================
+    print("=" * 80)
+    print("TEST A: Disposisi Pemutus Mandatory (Small Amount - ACRM Decides)")
+    print("=" * 80)
+    print()
+    
+    # Test A1: Create note with small amount and required fields
+    print("A1. Creating note with SMALL amount (1.5B) as RCO...")
+    note_a1 = create_minimal_note(rco_token, rco_area, rco_region, os_pokok=1_500_000_000)
+    
+    if not note_a1:
+        log_test("A1", "Create note with small amount", False, "Failed to create note")
     else:
-        print(f"\n⚠️  {total_count - passed_count} part(s) failed")
-        return 1
+        # Verify penyebab_bermasalah and nama_kjpp are stored
+        has_penyebab = bool(note_a1.get("analysis", {}).get("penyebab_bermasalah"))
+        has_kjpp = any(c.get("nama_kjpp") for c in note_a1.get("collaterals", []))
+        
+        log_test("A1", "Create note with small amount", True, 
+                f"Note ID: {note_a1['id']}, penyebab_bermasalah stored: {has_penyebab}, nama_kjpp stored: {has_kjpp}")
+        
+        # Test A2: Submit the note
+        print("A2. Submitting note as RCO...")
+        headers = get_headers(rco_token)
+        resp = requests.post(f"{BASE_URL}/notes/{note_a1['id']}/submit", headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            submitted_note = resp.json()
+            status = submitted_note.get("status")
+            stages = submitted_note.get("stages", [])
+            
+            # Check if routing is correct (should be ACRM decide for small amount)
+            is_acrm_decide = len(stages) > 0 and stages[0][0] == "ACRM" and stages[0][1] == "decide"
+            
+            log_test("A2", "Submit note (small amount)", True, 
+                    f"Status: {status}, Routing: {stages}, ACRM decides: {is_acrm_decide}")
+        else:
+            log_test("A2", "Submit note (small amount)", False, 
+                    f"Status: {resp.status_code}, Response: {resp.text}")
+            note_a1 = None
+        
+        # Test A3: ACRM approve WITHOUT disposisi (should fail with 400)
+        if note_a1:
+            print("A3. ACRM trying to approve WITHOUT disposisi...")
+            headers = get_headers(acrm_token)
+            resp = requests.post(f"{BASE_URL}/notes/{note_a1['id']}/action", 
+                               json={"decision": "approve"}, 
+                               headers=headers, timeout=30)
+            
+            if resp.status_code == 400:
+                error_msg = resp.json().get("detail", "")
+                has_disposisi_error = "disposisi" in error_msg.lower()
+                log_test("A3", "ACRM approve WITHOUT disposisi → 400", True, 
+                        f"Error message: {error_msg}, Contains 'disposisi': {has_disposisi_error}")
+            else:
+                log_test("A3", "ACRM approve WITHOUT disposisi → 400", False, 
+                        f"Expected 400, got {resp.status_code}")
+            
+            # Test A4: ACRM approve WITH disposisi (should succeed)
+            print("A4. ACRM approving WITH disposisi...")
+            resp = requests.post(f"{BASE_URL}/notes/{note_a1['id']}/action", 
+                               json={"decision": "approve", "disposisi": "Disetujui sesuai ketentuan"}, 
+                               headers=headers, timeout=30)
+            
+            if resp.status_code == 200:
+                approved_note = resp.json()
+                status = approved_note.get("status")
+                disposisi = approved_note.get("disposisi_pemutus")
+                
+                is_final_approved = status == "Final Approved"
+                has_disposisi = disposisi == "Disetujui sesuai ketentuan"
+                
+                log_test("A4", "ACRM approve WITH disposisi → 200", True, 
+                        f"Status: {status}, Disposisi: {disposisi}, Final Approved: {is_final_approved}")
+                
+                # Verify by GET
+                resp_get = requests.get(f"{BASE_URL}/notes/{note_a1['id']}", headers=headers, timeout=30)
+                if resp_get.status_code == 200:
+                    verified_note = resp_get.json()
+                    print(f"   Verified: disposisi_pemutus = '{verified_note.get('disposisi_pemutus')}'")
+            else:
+                log_test("A4", "ACRM approve WITH disposisi → 200", False, 
+                        f"Status: {resp.status_code}, Response: {resp.text}")
+    
+    print()
+    
+    # ========================================================================
+    # TEST B: Notifications Routing
+    # ========================================================================
+    print("=" * 80)
+    print("TEST B: Notifications Routing")
+    print("=" * 80)
+    print()
+    
+    # Test B1: Create and submit small note, check ACRM notifications
+    print("B1. Creating and submitting small note, checking ACRM notifications...")
+    note_b1 = create_minimal_note(rco_token, rco_area, rco_region, os_pokok=1_500_000_000)
+    
+    if note_b1:
+        headers = get_headers(rco_token)
+        resp = requests.post(f"{BASE_URL}/notes/{note_b1['id']}/submit", headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            # Check ACRM notifications
+            headers_acrm = get_headers(acrm_token)
+            resp_notif = requests.get(f"{BASE_URL}/notifications", headers=headers_acrm, timeout=30)
+            
+            if resp_notif.status_code == 200:
+                notif_data = resp_notif.json()
+                items = notif_data.get("items", [])
+                
+                # Find notification for this note
+                note_notif = None
+                for item in items:
+                    if item.get("note_id") == note_b1["id"]:
+                        note_notif = item
+                        break
+                
+                has_notif = note_notif is not None
+                log_test("B1", "ACRM receives notification after submit", has_notif, 
+                        f"Found notification: {has_notif}, Message: {note_notif.get('message') if note_notif else 'N/A'}")
+            else:
+                log_test("B1", "ACRM receives notification after submit", False, 
+                        f"Failed to get notifications: {resp_notif.status_code}")
+        else:
+            log_test("B1", "Submit note for notification test", False, 
+                    f"Status: {resp.status_code}")
+            note_b1 = None
+    else:
+        log_test("B1", "Create note for notification test", False, "Failed to create note")
+    
+    # Test B2: ACRM approve, check RCO notifications
+    if note_b1:
+        print("B2. ACRM approving, checking RCO notifications...")
+        headers_acrm = get_headers(acrm_token)
+        resp = requests.post(f"{BASE_URL}/notes/{note_b1['id']}/action", 
+                           json={"decision": "approve", "disposisi": "Disetujui"}, 
+                           headers=headers_acrm, timeout=30)
+        
+        if resp.status_code == 200:
+            # Check RCO notifications
+            headers_rco = get_headers(rco_token)
+            resp_notif = requests.get(f"{BASE_URL}/notifications", headers=headers_rco, timeout=30)
+            
+            if resp_notif.status_code == 200:
+                notif_data = resp_notif.json()
+                items = notif_data.get("items", [])
+                
+                # Find notification for this note
+                note_notif = None
+                for item in items:
+                    if item.get("note_id") == note_b1["id"] and "FINAL APPROVED" in item.get("message", ""):
+                        note_notif = item
+                        break
+                
+                has_notif = note_notif is not None
+                log_test("B2", "RCO receives FINAL APPROVED notification", has_notif, 
+                        f"Found notification: {has_notif}, Message: {note_notif.get('message') if note_notif else 'N/A'}")
+            else:
+                log_test("B2", "Get RCO notifications", False, 
+                        f"Status: {resp_notif.status_code}")
+        else:
+            log_test("B2", "ACRM approve for notification test", False, 
+                    f"Status: {resp.status_code}")
+    
+    # Test B3: Reject flow
+    print("B3. Testing reject flow notifications...")
+    note_b3 = create_minimal_note(rco_token, rco_area, rco_region, os_pokok=1_500_000_000)
+    
+    if note_b3:
+        headers = get_headers(rco_token)
+        resp = requests.post(f"{BASE_URL}/notes/{note_b3['id']}/submit", headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            # ACRM reject
+            headers_acrm = get_headers(acrm_token)
+            resp = requests.post(f"{BASE_URL}/notes/{note_b3['id']}/action", 
+                               json={"decision": "reject", "catatan": "tidak lengkap"}, 
+                               headers=headers_acrm, timeout=30)
+            
+            if resp.status_code == 200:
+                # Check RCO notifications
+                headers_rco = get_headers(rco_token)
+                resp_notif = requests.get(f"{BASE_URL}/notifications", headers=headers_rco, timeout=30)
+                
+                if resp_notif.status_code == 200:
+                    notif_data = resp_notif.json()
+                    items = notif_data.get("items", [])
+                    
+                    # Find reject notification
+                    note_notif = None
+                    for item in items:
+                        if item.get("note_id") == note_b3["id"] and "dikembalikan" in item.get("message", "").lower():
+                            note_notif = item
+                            break
+                    
+                    has_notif = note_notif is not None
+                    log_test("B3", "RCO receives reject notification", has_notif, 
+                            f"Found notification: {has_notif}, Message: {note_notif.get('message') if note_notif else 'N/A'}")
+                else:
+                    log_test("B3", "Get RCO notifications (reject)", False, 
+                            f"Status: {resp_notif.status_code}")
+            else:
+                log_test("B3", "ACRM reject", False, f"Status: {resp.status_code}")
+        else:
+            log_test("B3", "Submit note for reject test", False, f"Status: {resp.status_code}")
+    else:
+        log_test("B3", "Create note for reject test", False, "Failed to create note")
+    
+    # Test B4: Large amount flow (ACRM → RCRM → RCG)
+    print("B4. Testing large amount flow (ACRM → RCRM → RCG)...")
+    note_b4 = create_minimal_note(rco_token, rco_area, rco_region, os_pokok=15_000_000_000)  # 15B
+    
+    if note_b4:
+        headers = get_headers(rco_token)
+        resp = requests.post(f"{BASE_URL}/notes/{note_b4['id']}/submit", headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            submitted = resp.json()
+            stages = submitted.get("stages", [])
+            
+            # Should have multiple stages for large amount
+            is_multi_stage = len(stages) >= 3
+            log_test("B4a", "Large amount routing (multi-stage)", is_multi_stage, 
+                    f"Stages: {stages}")
+            
+            # ACRM forward
+            headers_acrm = get_headers(acrm_token)
+            resp = requests.post(f"{BASE_URL}/notes/{note_b4['id']}/action", 
+                               json={"decision": "forward", "catatan": "Diteruskan ke RCRM"}, 
+                               headers=headers_acrm, timeout=30)
+            
+            if resp.status_code == 200:
+                # Check RCRM notifications
+                headers_rcrm = get_headers(rcrm_token)
+                resp_notif = requests.get(f"{BASE_URL}/notifications", headers=headers_rcrm, timeout=30)
+                
+                if resp_notif.status_code == 200:
+                    notif_data = resp_notif.json()
+                    items = notif_data.get("items", [])
+                    
+                    note_notif = None
+                    for item in items:
+                        if item.get("note_id") == note_b4["id"]:
+                            note_notif = item
+                            break
+                    
+                    has_notif = note_notif is not None
+                    log_test("B4b", "RCRM receives notification after ACRM forward", has_notif, 
+                            f"Message: {note_notif.get('message') if note_notif else 'N/A'}")
+                    
+                    # RCRM forward
+                    resp = requests.post(f"{BASE_URL}/notes/{note_b4['id']}/action", 
+                                       json={"decision": "forward", "catatan": "Diteruskan ke RCG"}, 
+                                       headers=headers_rcrm, timeout=30)
+                    
+                    if resp.status_code == 200:
+                        # Check IMMADHA notifications
+                        headers_immadha = get_headers(immadha_token)
+                        resp_notif = requests.get(f"{BASE_URL}/notifications", headers=headers_immadha, timeout=30)
+                        
+                        if resp_notif.status_code == 200:
+                            notif_data = resp_notif.json()
+                            items = notif_data.get("items", [])
+                            
+                            note_notif = None
+                            for item in items:
+                                if item.get("note_id") == note_b4["id"]:
+                                    note_notif = item
+                                    break
+                            
+                            has_notif = note_notif is not None
+                            log_test("B4c", "IMMADHA receives notification after RCRM forward", has_notif, 
+                                    f"Message: {note_notif.get('message') if note_notif else 'N/A'}")
+                            
+                            # IMMADHA approve WITHOUT disposisi (should fail)
+                            resp = requests.post(f"{BASE_URL}/notes/{note_b4['id']}/action", 
+                                               json={"decision": "approve"}, 
+                                               headers=headers_immadha, timeout=30)
+                            
+                            if resp.status_code == 400:
+                                log_test("B4d", "IMMADHA approve WITHOUT disposisi → 400", True, 
+                                        f"Error: {resp.json().get('detail')}")
+                            else:
+                                log_test("B4d", "IMMADHA approve WITHOUT disposisi → 400", False, 
+                                        f"Expected 400, got {resp.status_code}")
+                            
+                            # IMMADHA approve WITH disposisi
+                            resp = requests.post(f"{BASE_URL}/notes/{note_b4['id']}/action", 
+                                               json={"decision": "approve", "disposisi": "Disetujui oleh RCG"}, 
+                                               headers=headers_immadha, timeout=30)
+                            
+                            if resp.status_code == 200:
+                                approved = resp.json()
+                                is_final = approved.get("status") == "Final Approved"
+                                log_test("B4e", "IMMADHA approve WITH disposisi → 200", True, 
+                                        f"Status: {approved.get('status')}, Final: {is_final}")
+                            else:
+                                log_test("B4e", "IMMADHA approve WITH disposisi → 200", False, 
+                                        f"Status: {resp.status_code}")
+                        else:
+                            log_test("B4c", "Get IMMADHA notifications", False, 
+                                    f"Status: {resp_notif.status_code}")
+                    else:
+                        log_test("B4b2", "RCRM forward", False, f"Status: {resp.status_code}")
+                else:
+                    log_test("B4b", "Get RCRM notifications", False, 
+                            f"Status: {resp_notif.status_code}")
+            else:
+                log_test("B4a2", "ACRM forward", False, f"Status: {resp.status_code}")
+        else:
+            log_test("B4a", "Submit large amount note", False, f"Status: {resp.status_code}")
+    else:
+        log_test("B4", "Create large amount note", False, "Failed to create note")
+    
+    print()
+    
+    # ========================================================================
+    # TEST C: Reports (Excel Export and PDF)
+    # ========================================================================
+    print("=" * 80)
+    print("TEST C: Reports (Excel Export and PDF)")
+    print("=" * 80)
+    print()
+    
+    # Test C1: Excel export
+    print("C1. Testing Excel export as admin...")
+    headers_admin = get_headers(admin_token)
+    resp = requests.get(f"{BASE_URL}/export/notes-excel", headers=headers_admin, timeout=30)
+    
+    if resp.status_code == 200:
+        content_type = resp.headers.get("Content-Type", "")
+        is_excel = "spreadsheet" in content_type or "excel" in content_type
+        content_length = len(resp.content)
+        
+        # Check if it's a valid Excel file (starts with PK for zip/xlsx)
+        is_valid_xlsx = resp.content[:2] == b'PK'
+        
+        log_test("C1", "Excel export → 200", True, 
+                f"Content-Type: {content_type}, Is Excel: {is_excel}, Size: {content_length} bytes, Valid XLSX: {is_valid_xlsx}")
+    else:
+        log_test("C1", "Excel export → 200", False, 
+                f"Status: {resp.status_code}, Response: {resp.text[:200]}")
+    
+    # Test C2: PDF download for Final Approved note
+    print("C2. Testing PDF download for Final Approved note...")
+    
+    # Use note_a1 or note_b1 which should be Final Approved
+    test_note_id = None
+    if note_a1:
+        test_note_id = note_a1["id"]
+    elif note_b1:
+        test_note_id = note_b1["id"]
+    
+    if test_note_id:
+        # First verify the note is Final Approved
+        headers_rco = get_headers(rco_token)
+        resp = requests.get(f"{BASE_URL}/notes/{test_note_id}", headers=headers_rco, timeout=30)
+        
+        if resp.status_code == 200:
+            note_data = resp.json()
+            status = note_data.get("status")
+            can_download = note_data.get("can_download", False)
+            
+            print(f"   Note status: {status}, can_download: {can_download}")
+            
+            if status == "Final Approved" and can_download:
+                # Try to download PDF
+                resp_pdf = requests.get(f"{BASE_URL}/notes/{test_note_id}/pdf", headers=headers_rco, timeout=30)
+                
+                if resp_pdf.status_code == 200:
+                    content_type = resp_pdf.headers.get("Content-Type", "")
+                    is_pdf = "pdf" in content_type
+                    content_length = len(resp_pdf.content)
+                    
+                    # Check if it's a valid PDF (starts with %PDF)
+                    is_valid_pdf = resp_pdf.content[:4] == b'%PDF'
+                    
+                    log_test("C2", "PDF download for Final Approved note → 200", True, 
+                            f"Content-Type: {content_type}, Is PDF: {is_pdf}, Size: {content_length} bytes, Valid PDF: {is_valid_pdf}")
+                else:
+                    log_test("C2", "PDF download for Final Approved note → 200", False, 
+                            f"Status: {resp_pdf.status_code}, Response: {resp_pdf.text[:200]}")
+            else:
+                log_test("C2", "PDF download for Final Approved note", False, 
+                        f"Note not Final Approved or cannot download. Status: {status}, can_download: {can_download}")
+        else:
+            log_test("C2", "Get note for PDF test", False, 
+                    f"Status: {resp.status_code}")
+    else:
+        log_test("C2", "PDF download test", False, "No Final Approved note available")
+    
+    print()
+    
+    # ========================================================================
+    # SUMMARY
+    # ========================================================================
+    print("=" * 80)
+    print("TEST SUMMARY")
+    print("=" * 80)
+    print()
+    
+    passed_count = sum(1 for r in test_results if "✅ PASS" in r)
+    total_count = len(test_results)
+    
+    print(f"Total Tests: {total_count}")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {total_count - passed_count}")
+    print()
+    
+    print("Detailed Results:")
+    print("-" * 80)
+    for result in test_results:
+        print(result)
+    print()
+    
+    print("=" * 80)
+    print("NIPs Used:")
+    print(f"  RCO: {RCO_NIP} ({rco_user.get('nama')})")
+    print(f"  ACRM: {acrm_nip} ({acrm_user.get('nama')})")
+    print(f"  RCRM: {rcrm_nip} ({rcrm_user.get('nama')})")
+    print(f"  IMMADHA (RCG): {IMMADHA_NIP}")
+    print(f"  Admin: {ADMIN_NIP}")
+    print("=" * 80)
 
 if __name__ == "__main__":
-    exit(main())
+    main()

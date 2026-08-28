@@ -121,7 +121,7 @@ def generate_note_pdf(note: dict) -> bytes:
         ("Nomor Nota", note.get("nomor_nota", "")),
         ("Dari", note.get("dari", "")),
         ("Tanggal", note.get("tanggal_nota", "")),
-        ("Kepada", note.get("kepada", "")),
+        ("Pemutus", note.get("kepada", "")),
         ("Reff", f"Surat Permohonan Nasabah tanggal {note.get('reff_tanggal','-')}"),
         ("Perihal", note.get("perihal", "")),
     ], ss))
@@ -158,7 +158,6 @@ def generate_note_pdf(note: dict) -> bytes:
         ("Total Outstanding Margin + Tunggakan Margin", rp(note.get("total_os_margin"))),
         ("Total Penalty", rp(note.get("total_penalty"))),
         ("Total Kewajiban", rp(note.get("total_kewajiban"))),
-        ("Nilai Kewenangan Pemutus", rp(note.get("nilai_kewenangan_pemutus"))),
     ], ss))
 
     # Collateral
@@ -166,8 +165,11 @@ def generate_note_pdf(note: dict) -> bytes:
     if note.get("has_fix_asset") and note.get("collaterals"):
         crows = []
         for col in note["collaterals"]:
+            _pen = col.get("penilai", "")
+            if _pen == "KJPP" and col.get("nama_kjpp"):
+                _pen = f"KJPP - {col.get('nama_kjpp')}"
             crows.append([col.get("jenis", ""), rp(col.get("nilai_pasar")), rp(col.get("nilai_likuidasi")),
-                          f"{col.get('ccr_pasar',0):.1f}%", f"{col.get('ccr_likuidasi',0):.1f}%", col.get("penilai", "")])
+                          f"{col.get('ccr_pasar',0):.1f}%", f"{col.get('ccr_likuidasi',0):.1f}%", _pen])
         el.append(_grid(["Jenis", "Nilai Pasar", "Nilai Likuidasi", "CCR Pasar", "CCR Likuidasi", "Penilai"], crows, ss,
                         [40 * mm, 28 * mm, 28 * mm, 22 * mm, 24 * mm, 28 * mm]))
     else:
@@ -188,6 +190,7 @@ def generate_note_pdf(note: dict) -> bytes:
     el.append(_kv([
         ("Profil Nasabah / Kondisi Usaha", a.get("profil", "Terpenuhi")),
         ("Informasi Karakter", a.get("karakter", "")),
+        ("Penyebab Nasabah Bermasalah", a.get("penyebab_bermasalah", "")),
         ("Kemampuan Bayar", a.get("kemampuan_bayar", "")),
         ("Informasi Jaminan & CCR", a.get("informasi_jaminan", "")),
         ("TBO", a.get("tbo", "Terpenuhi, tidak ada TBO")),
@@ -219,6 +222,11 @@ def generate_note_pdf(note: dict) -> bytes:
     for p in note.get("penutup", []):
         el.append(Paragraph(p, ss["Body2"]))
 
+    # Disposisi Pemutus
+    if note.get("disposisi_pemutus"):
+        el.append(_section("DISPOSISI PEMUTUS", ss))
+        el.append(Paragraph(note.get("disposisi_pemutus", ""), ss["Body2"]))
+
     # Approval history
     el.append(_section("RIWAYAT PERSETUJUAN", ss))
     arows = []
@@ -240,7 +248,6 @@ def generate_note_pdf(note: dict) -> bytes:
             ("Pemutus", f"{note.get('final_approver_nama','')} - NIP {note.get('final_approver_nip','')}"),
             ("Jabatan Pemutus", note.get("final_approver_jabatan", "")),
             ("Level Pemutus", note.get("final_approver_level", "")),
-            ("Nilai Kewenangan Pemutus", rp(note.get("nilai_kewenangan_pemutus"))),
             ("Limit Pemutus Digunakan", rp(note.get("limit_pemutus_used"))),
             ("Tanggal & Jam Approved", f"{note.get('approved_date','')} {note.get('approved_time','')}"),
         ], ss),

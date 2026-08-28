@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api, { apiError } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/PageHeader";
 import { formatNumberInput, parseNumber, formatRupiah } from "../lib/format";
-import { FilePlus2, Plus, Trash2, Save, Eye, Send, Upload, Check, Loader2, AlertTriangle } from "lucide-react";
+import { FilePlus2, Plus, Trash2, Save, Eye, Send, Upload, Check, Loader2, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 const emptyLoan = () => ({ nama_cabang: "", cif: "", nomor_loan: "", kolektibilitas: "", segmen: "", produk: "", akad: "", os_pokok: 0, os_margin: 0, penalty: 0, tgl_mulai: "", tgl_akhir: "" });
@@ -11,6 +12,7 @@ const emptyCollateral = () => ({ jenis: "", nilai_pasar: 0, nilai_likuidasi: 0, 
 
 const inp = "w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-[#00A0A0]/20 focus:border-[#00A0A0] outline-none";
 const lbl = "text-xs font-semibold text-slate-500";
+const STANDARD_DOC_KEYS = ["foto_ots", "surat_permohonan_ktp", "laporan_agunan", "bi_checking"];
 
 function Section({ title, children, num }) {
   return (
@@ -26,6 +28,7 @@ function Section({ title, children, num }) {
 export default function NoteForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [ref, setRef] = useState(null);
   const [branches, setBranches] = useState([]);
   const [noteId, setNoteId] = useState(id || null);
@@ -38,8 +41,16 @@ export default function NoteForm() {
   const [hasFixAsset, setHasFixAsset] = useState(false);
   const [collaterals, setCollaterals] = useState([]);
   const [rac, setRac] = useState([]);
-  const [analysis, setAnalysis] = useState({ kemampuan_bayar: "" });
+  const [analysis, setAnalysis] = useState({ kemampuan_bayar: "", penyebab_bermasalah: "" });
   const [documents, setDocuments] = useState({});
+  const [customDocs, setCustomDocs] = useState([]); // [{id, label, uploaded}]
+  const [progress, setProgress] = useState({}); // key -> percent (0-100) while uploading
+
+  // Opsi Pemutus (label header) diturunkan dari area/region pembuat nota
+  const pemutusOptions = [];
+  if (user?.area) pemutusOptions.push(`ACRM ${String(user.area).replace(/^Area\s+/i, "")}`);
+  if (user?.region) pemutusOptions.push(`RCRM ${user.region}`);
+  pemutusOptions.push("Group Head RCG");
 
   useEffect(() => {
     api.get("/reference").then((r) => setRef(r.data));
@@ -56,14 +67,19 @@ export default function NoteForm() {
       setHasFixAsset(!!n.has_fix_asset);
       setCollaterals(n.collaterals || []);
       setRac(n.rac || []);
-      setAnalysis({ kemampuan_bayar: n.analysis?.kemampuan_bayar || "" });
+      setAnalysis({ kemampuan_bayar: n.analysis?.kemampuan_bayar || "", penyebab_bermasalah: n.analysis?.penyebab_bermasalah || "" });
       const docs = {};
-      (n.documents || []).forEach((d) => { docs[d.document_type] = d; });
+      const custom = [];
+      (n.documents || []).forEach((d) => {
+        if (STANDARD_DOC_KEYS.includes(d.document_type)) {
+          docs[d.document_type] = d;
+        } else if (d.file_path) {
+          custom.push({ id: d.document_type, label: d.label || d.filename || "Dokumen tambahan", uploaded: d });
+        }
+      });
       setDocuments(docs);
-      // proposals dates back into facilities
-      (n.proposals || []).forEach((p, i) => { if (facilities[i]) { } });
+      setCustomDocs(custom);
     }).catch(() => toast.error("Gagal memuat nota"));
-    // eslint-disable-next-line
   }, [id]);
 
   // Recompute RAC when segments change
@@ -106,9 +122,12 @@ export default function NoteForm() {
       has_fix_asset: hasFixAsset,
       collaterals: hasFixAsset ? collaterals.map((c) => ({ ...c, nilai_pasar: parseNumber(c.nilai_pasar), nilai_likuidasi: parseNumber(c.nilai_likuidasi) })) : [],
       rac,
-      analysis: { kemampuan_bayar: analysis.kemampuan_bayar },
+      analysis: { kemampuan_bayar: analysis.kemampuan_bayar, penyebab_bermasalah: analysis.penyebab_bermasalah },
       proposals,
-      documents: Object.entries(documents).map(([k, v]) => ({ document_type: k, filename: v.original, file_path: v.file_path })),
+      documents: [
+        ...Object.entries(documents).map(([k, v]) => ({ document_type: k, filename: v.original, file_path: v.file_path })),
+        ...customDocs.filter((c) => c.uploaded).map((c) => ({ document_type: c.id, label: c.label, filename: c.uploaded.original, file_path: c.uploaded.file_path })),
+      ],
     };
   };
 
@@ -136,11 +155,38 @@ export default function NoteForm() {
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  const uploadDoc = async (key, file) => {
+  const uploadWithProgress = async (progressKey, file) => {
     const fd = new FormData(); fd.append("file", file);
+    setProgress((p) => ({ ...p, [progressKey]: 1 }));
     try {
-      const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const { data } = await api.post("/upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (evt) => {
+          const pct = evt.total ? Math.round((evt.loaded * 100) / evt.total) : 0;
+          setProgress((p) => ({ ...p, [progressKey]: Math.max(1, pct) }));
+        },
+      });
+      return data;
+    } finally {
+      setProgress((p) => { const c = { ...p }; delete c[progressKey]; return c; });
+    }
+  };
+
+  const uploadDoc = async (key, file) => {
+    try {
+      const data = await uploadWithProgress(key, file);
       setDocuments((d) => ({ ...d, [key]: data }));
+      toast.success("Dokumen terupload");
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const addCustomDoc = () => setCustomDocs((c) => [...c, { id: `custom_${Date.now()}`, label: "", uploaded: null }]);
+  const setCustomLabel = (id, label) => setCustomDocs((c) => c.map((x) => (x.id === id ? { ...x, label } : x)));
+  const removeCustomDoc = (id) => setCustomDocs((c) => c.filter((x) => x.id !== id));
+  const uploadCustomDoc = async (id, file) => {
+    try {
+      const data = await uploadWithProgress(id, file);
+      setCustomDocs((c) => c.map((x) => (x.id === id ? { ...x, uploaded: data } : x)));
       toast.success("Dokumen terupload");
     } catch (e) { toast.error(apiError(e)); }
   };
@@ -158,9 +204,9 @@ export default function NoteForm() {
             <input className={inp + " mt-1"} maxLength={5} value={header.nomor_manual} onChange={(e) => setHeader({ ...header, nomor_manual: e.target.value.replace(/\D/g, "") })} data-testid="nf-nomor" placeholder="12345" />
             <p className="text-xs text-slate-400 mt-1">Format: 06/{header.nomor_manual || "xxxxx"}-2/ACR ...</p>
           </div>
-          <div><label className={lbl}>Kepada</label>
+          <div><label className={lbl}>Pemutus</label>
             <select className={inp + " mt-1"} value={header.kepada} onChange={(e) => setHeader({ ...header, kepada: e.target.value })} data-testid="nf-kepada">
-              <option value="">Pilih</option>{ref.kepada.map((k) => <option key={k} value={k}>{k}</option>)}
+              <option value="">Pilih Pemutus</option>{pemutusOptions.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
           <div><label className={lbl}>Tanggal Surat Reff (Permohonan Nasabah)</label>
@@ -310,6 +356,9 @@ export default function NoteForm() {
       <Section num={6} title="Analisa">
         <div className="space-y-3">
           <div className="text-sm bg-slate-50 rounded-md p-3 border border-slate-100"><b>Profil / Karakter:</b> otomatis terisi pada nota final.</div>
+          <div><label className={lbl}>Jelaskan Penyebab Nasabah Bermasalah</label>
+            <textarea className={inp + " mt-1"} rows={3} value={analysis.penyebab_bermasalah} onChange={(e) => setAnalysis({ ...analysis, penyebab_bermasalah: e.target.value })} data-testid="nf-penyebab" placeholder="Uraikan penyebab nasabah mengalami permasalahan pembiayaan..." />
+          </div>
           <div><label className={lbl}>Kemampuan Bayar / Repayment Capacity</label>
             <select className={inp + " mt-1"} value={analysis.kemampuan_bayar} onChange={(e) => setAnalysis({ ...analysis, kemampuan_bayar: e.target.value })} data-testid="nf-kemampuan">
               <option value="">Pilih</option>{ref.kemampuan_bayar.map((k) => <option key={k} value={k}>{k}</option>)}
@@ -324,11 +373,18 @@ export default function NoteForm() {
           {ref.document_types.map((dt) => {
             const uploaded = documents[dt.key];
             const required = dt.required || (dt.required_if_fix_asset && hasFixAsset);
+            const pct = progress[dt.key];
             return (
               <div key={dt.key} className="border border-slate-200 rounded-md p-3 flex items-center justify-between gap-3" data-testid={`doc-${dt.key}`}>
-                <div className="text-sm">
+                <div className="text-sm flex-1 min-w-0">
                   <div className="text-slate-700">{dt.label} {required && <span className="text-red-500">*</span>}</div>
-                  {uploaded && <div className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5"><Check size={12} /> {uploaded.original}</div>}
+                  {uploaded && !pct && <div className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5"><Check size={12} /> {uploaded.original}</div>}
+                  {pct != null && (
+                    <div className="mt-1.5" data-testid={`doc-progress-${dt.key}`}>
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-[#00A0A0] transition-all" style={{ width: `${pct}%` }} /></div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Mengupload... {pct}%</div>
+                    </div>
+                  )}
                 </div>
                 <label className="text-xs bg-[#E6F6F6] text-[#00A0A0] rounded-md px-3 py-1.5 cursor-pointer flex items-center gap-1 whitespace-nowrap">
                   <Upload size={13} /> {uploaded ? "Ganti" : "Upload"}
@@ -337,6 +393,34 @@ export default function NoteForm() {
               </div>
             );
           })}
+        </div>
+
+        {/* Dokumen tambahan dinamis */}
+        <div className="mt-4 space-y-2">
+          <div className="text-xs font-semibold text-slate-500">Dokumen Tambahan</div>
+          {customDocs.map((c) => {
+            const pct = progress[c.id];
+            return (
+              <div key={c.id} className="border border-slate-200 rounded-md p-3 flex items-center gap-3" data-testid={`custom-doc-${c.id}`}>
+                <div className="flex-1 min-w-0">
+                  <input className={inp} placeholder="Nama dokumen (mis. Rekening Koran, Sertifikat, dll)" value={c.label} onChange={(e) => setCustomLabel(c.id, e.target.value)} data-testid={`custom-doc-label-${c.id}`} />
+                  {c.uploaded && !pct && <div className="text-xs text-emerald-600 flex items-center gap-1 mt-1"><Check size={12} /> {c.uploaded.original}</div>}
+                  {pct != null && (
+                    <div className="mt-1.5">
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-[#00A0A0] transition-all" style={{ width: `${pct}%` }} /></div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Mengupload... {pct}%</div>
+                    </div>
+                  )}
+                </div>
+                <label className="text-xs bg-[#E6F6F6] text-[#00A0A0] rounded-md px-3 py-1.5 cursor-pointer flex items-center gap-1 whitespace-nowrap">
+                  <Upload size={13} /> {c.uploaded ? "Ganti" : "Upload"}
+                  <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => e.target.files[0] && uploadCustomDoc(c.id, e.target.files[0])} data-testid={`custom-doc-input-${c.id}`} />
+                </label>
+                <button type="button" onClick={() => removeCustomDoc(c.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Hapus dokumen"><X size={15} /></button>
+              </div>
+            );
+          })}
+          <button type="button" onClick={addCustomDoc} data-testid="add-custom-doc" className="text-sm text-[#00A0A0] font-medium flex items-center gap-1 hover:underline"><Plus size={16} /> Tambah Dokumen Upload</button>
         </div>
       </Section>
 

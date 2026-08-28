@@ -46,7 +46,9 @@ export default function Layout() {
     const load = () => api.get("/notifications").then((r) => setUnread(r.data.unread)).catch(() => {});
     load();
     const iv = setInterval(load, 30000);
-    return () => clearInterval(iv);
+    const onRead = () => setUnread(0);
+    window.addEventListener("notif-read", onRead);
+    return () => { clearInterval(iv); window.removeEventListener("notif-read", onRead); };
   }, []);
 
   const items = menuFor(user);
