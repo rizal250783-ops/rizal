@@ -586,6 +586,13 @@ def num(v):
         return 0.0
 
 
+def rp_id(v):
+    try:
+        return "Rp" + f"{int(round(float(v or 0))):,}".replace(",", ".")
+    except Exception:
+        return "Rp0"
+
+
 def compute_financials(note):
     tp = tm = tpen = nilai = 0.0
     for f in note.get("facilities", []):
@@ -769,6 +776,26 @@ def note_category(role, note):
             return "correction"
         return "committee"
     return None
+
+
+def note_action_required(user, note):
+    """True jika nota menunggu tindakan langsung dari user ini (untuk badge tab)."""
+    role = user["role"]
+    status = note.get("status", "") or ""
+    if role == "RCO":
+        return status == "Draft" or status.startswith("Revisi") or status.startswith("Reject")
+    stages = note.get("stages", [])
+    idx = note.get("stage_index", 0)
+    if idx >= len(stages) or not status.startswith("Menunggu"):
+        return False
+    level = stages[idx][0]
+    if level == "ACRM":
+        return role == "ACRM" and user.get("area") == note.get("area")
+    if level == "RCRM":
+        return role == "RCRM" and user.get("region") == note.get("region")
+    if level == "RCG":
+        return user.get("nip") == (note.get("rcg_pemutus_nip") or C.IMMADHA_NIP)
+    return False
 
 
 @api.get("/pemutus-preview")
@@ -1084,8 +1111,18 @@ async def note_action(nid: str, req: ActionReq, user: dict = Depends(current_use
     # notify penanggung jawab tahap berikutnya
     recip = await stage_assignees(note, next_stage)
     if recip:
-        verb = "diputuskan" if next_stage[1] == "decide" else "direview"
-        await notify(recip, note, f"Nota restruktur {note['nomor_nota']} diteruskan ke Anda untuk {verb}.")
+        if next_stage[0] == "RCG" and next_stage[1] == "decide":
+            nilai_txt = rp_id(note.get("nilai_kewenangan_pemutus"))
+            if (note.get("rcg_pemutus_nip") or C.IMMADHA_NIP) == C.RATMIYATI_NIP:
+                msg = (f"Nota restruktur {note['nomor_nota']} (RCG ≤ Rp10 Miliar, nilai {nilai_txt}) "
+                       f"menunggu KEPUTUSAN Anda selaku pemutus RCG.")
+            else:
+                msg = (f"Nota restruktur {note['nomor_nota']} (RCG, nilai {nilai_txt}) "
+                       f"menunggu KEPUTUSAN Anda selaku pemutus RCG.")
+            await notify(recip, note, msg)
+        else:
+            verb = "diputuskan" if next_stage[1] == "decide" else "direview"
+            await notify(recip, note, f"Nota restruktur {note['nomor_nota']} diteruskan ke Anda untuk {verb}.")
     await audit(user, "forward_note", "note", nid, None, {"status": status})
     return await db.notes.find_one({"id": nid}, NO_ID)
 
@@ -1144,6 +1181,7 @@ async def list_notes(status: Optional[str] = None, area: Optional[str] = None,
         if cat is None and user["role"] != "RCO":
             continue
         n["category"] = cat
+        n["action_required"] = note_action_required(user, n)
         result.append(n)
     return result
 
@@ -1416,7 +1454,7 @@ async def export_excel(request: Request, region: Optional[str] = None, area: Opt
 async def export_notes_excel_filtered(user: dict = Depends(current_user),
                                       status: Optional[str] = None, area: Optional[str] = None,
                                       region: Optional[str] = None, cabang: Optional[str] = None,
-                                      q: Optional[str] = None):
+                                      q: Optional[str] = None, category: Optional[str] = None):
     """Ekspor Excel berwarna mengikuti filter aktif di Daftar Nota (RBAC per peran)."""
     query = rbac_query(user)
     if status:
@@ -1431,7 +1469,14 @@ async def export_notes_excel_filtered(user: dict = Depends(current_user),
     notes = await db.notes.find(query, NO_ID).sort("updated_at", -1).to_list(5000)
     if cabang:
         notes = [n for n in notes if any((f.get("nama_cabang") or "") == cabang for f in n.get("facilities", []))]
+    # filter berdasarkan kategori tab (dan sembunyikan nota yang tidak relevan bagi role non-RCO)
+    if category:
+        notes = [n for n in notes if note_category(user["role"], n) == category]
+    elif user["role"] != "RCO":
+        notes = [n for n in notes if note_category(user["role"], n) is not None]
     parts = []
+    if category:
+        parts.append(f"kategori={category}")
     if q and q.strip():
         parts.append(f"cari='{q.strip()}'")
     if status:
@@ -1445,7 +1490,7 @@ async def export_notes_excel_filtered(user: dict = Depends(current_user),
     meta = {"by": f"{user.get('nama')} ({user.get('role')})", "filter_text": ", ".join(parts) if parts else None}
     data = export_notes_excel(notes, meta)
     await audit(user, "export_notes_excel", "note", "-", None, {"count": len(notes)})
-    fname = f"Daftar_Nota_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    fname = f"Daftar_Nota_{(category + '_') if category else ''}{datetime.now().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(io.BytesIO(data),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={fname}"})

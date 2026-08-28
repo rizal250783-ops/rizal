@@ -101,6 +101,10 @@ export default function NotesList() {
     acc[t.key] = notes.filter((n) => n.category === t.key).length;
     return acc;
   }, {});
+  const tabActionNeeded = tabs.reduce((acc, t) => {
+    acc[t.key] = notes.some((n) => n.category === t.key && n.action_required);
+    return acc;
+  }, {});
 
   const filtered = notes.filter((n) => {
     const term = q.trim().toLowerCase();
@@ -196,15 +200,17 @@ export default function NotesList() {
       const params = new URLSearchParams();
       const fl = currentFilters();
       Object.entries(fl).forEach(([k, v]) => { if (v) params.set(k, v); });
+      if (activeTab) params.set("category", activeTab);
       const res = await fetch(`${API}/export/notes-excel?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Gagal ekspor Excel");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `Daftar_Nota_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const tabLabel = (tabs.find((t) => t.key === activeTab)?.label || "Daftar").replace(/\s+/g, "_");
+      a.href = url; a.download = `Rekap_${tabLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Excel berhasil diunduh");
+      toast.success(`Rekap tab "${tabs.find((t) => t.key === activeTab)?.label}" diunduh`);
     } catch { toast.error("Gagal mengunduh Excel"); }
   };
 
@@ -224,7 +230,7 @@ export default function NotesList() {
             </button>
             <button data-testid="export-excel-btn" onClick={exportExcel} disabled={filtered.length === 0}
               className="bg-[#0F766E] hover:bg-[#0b5f58] text-white font-semibold px-3.5 py-2.5 rounded-md text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-              <FileSpreadsheet size={16} /> Excel
+              <FileSpreadsheet size={16} /> Rekap Tab
             </button>
             {user.role === "RCO" && (
               <button data-testid="new-note-btn" onClick={() => navigate("/notes/new")} className="bg-[#00A0A0] hover:bg-[#008888] text-white font-semibold px-4 py-2.5 rounded-md text-sm flex items-center gap-2">
@@ -241,12 +247,18 @@ export default function NotesList() {
             key={t.key}
             data-testid={`tab-${t.key}`}
             onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-semibold rounded-t-md -mb-px border-b-2 transition-colors flex items-center gap-2 ${
+            className={`relative px-4 py-2.5 text-sm font-semibold rounded-t-md -mb-px border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === t.key
                 ? "border-[#00A0A0] text-[#00A0A0] bg-white"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
             }`}
           >
+            {tabActionNeeded[t.key] && (
+              <span data-testid={`tab-alert-${t.key}`} title="Ada nota yang menunggu tindakan Anda" className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+              </span>
+            )}
             {t.label}
             <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${activeTab === t.key ? "bg-[#00A0A0] text-white" : "bg-slate-200 text-slate-600"}`}>
               {tabCounts[t.key] || 0}
