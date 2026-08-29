@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://dependency-install-2.preview.emergentagent.com/api"
+BASE_URL = "https://rizal-ops-setup.preview.emergentagent.com/api"
 
 # Test credentials (all passwords: bsi12345)
 ADMIN_NIP = "2183008345"  # SYAMSU RIZAL

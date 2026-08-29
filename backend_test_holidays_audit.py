@@ -11,7 +11,7 @@ from typing import Optional
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://github-import-setup-4.preview.emergentagent.com/api"
+BASE_URL = "https://rizal-ops-setup.preview.emergentagent.com/api"
 
 # Test credentials (all passwords: bsi12345)
 SYAMSU_RIZAL = {"nip": "2183008345", "password": "bsi12345", "name": "SYAMSU RIZAL", "role": "RCG", "is_admin": True}
