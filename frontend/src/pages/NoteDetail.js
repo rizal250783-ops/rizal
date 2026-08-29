@@ -38,7 +38,7 @@ export default function NoteDetail() {
     isDecide = act === "decide";
     if (level === "ACRM") canAct = user.role === "ACRM" && user.area === note.area;
     else if (level === "RCRM") canAct = user.role === "RCRM" && user.region === note.region;
-    else if (level === "RCG") canAct = user.nip === IMMADHA_NIP;
+    else if (level === "RCG") canAct = user.nip === (note.rcg_pemutus_nip || IMMADHA_NIP);
   }
 
   const submitNote = async () => {

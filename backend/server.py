@@ -1095,7 +1095,9 @@ async def note_action(nid: str, req: ActionReq, user: dict = Depends(current_use
             "status": "Final Approved", "read_only": True, "stage_index": new_idx,
             "disposisi_pemutus": disposisi_text,
             "final_approver_id": user["id"], "final_approver_nama": user["nama"], "final_approver_nip": user["nip"],
-            "final_approver_jabatan": user.get("jabatan"), "approved_at": now_iso(),
+            "final_approver_jabatan": user.get("jabatan"),
+            "final_approver_role": user.get("role"), "final_approver_area": user.get("area"),
+            "approved_at": now_iso(),
             "approved_date": adate, "approved_time": atime, "limit_pemutus_used": lu,
             "updated_at": now_iso(),
         }

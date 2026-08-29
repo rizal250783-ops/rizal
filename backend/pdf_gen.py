@@ -1,6 +1,7 @@
 """Professional printable PDF generation for approved notes."""
 import io
 import os
+import re
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -8,13 +9,16 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether, Image,
 )
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT, TA_LEFT
 from reportlab.pdfgen import canvas as _canvas
 
 TEAL = colors.HexColor("#00A0A0")
 GOLD = colors.HexColor("#F0B43C")
 DARK = colors.HexColor("#0F172A")
 LIGHT = colors.HexColor("#F1F5F9")
+
+# Lebar konten untuk kertas A4 dengan margin 2cm di semua sisi (210 - 20 - 20 = 170mm)
+CONTENT_W = 170 * mm
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "bsi_logo.png")
 
@@ -44,12 +48,14 @@ class NumberedCanvas(_canvas.Canvas):
         self.saveState()
         self.setStrokeColor(GOLD)
         self.setLineWidth(0.8)
-        self.line(15 * mm, 12 * mm, w - 15 * mm, 12 * mm)
+        self.line(20 * mm, 13 * mm, w - 20 * mm, 13 * mm)
         self.setFont("Helvetica", 6.5)
         self.setFillColor(colors.grey)
-        self.drawString(15 * mm, 8 * mm, "DOKUMEN RAHASIA - PT. Bank Syariah Indonesia, Tbk (Internal Use Only)")
-        self.drawCentredString(w / 2, 8 * mm, f"Nota: {self._nomor}")
-        self.drawRightString(w - 15 * mm, 8 * mm, f"Halaman {page_num} dari {total} halaman")
+        # Baris 1: keterangan rahasia (kiri) + nomor halaman (kanan)
+        self.drawString(20 * mm, 9 * mm, "DOKUMEN RAHASIA - PT. Bank Syariah Indonesia, Tbk (Internal Use Only)")
+        self.drawRightString(w - 20 * mm, 9 * mm, f"Halaman {page_num} dari {total} halaman")
+        # Baris 2: nomor nota di baris terpisah agar tidak tumpang tindih
+        self.drawString(20 * mm, 5 * mm, f"Nota: {self._nomor}")
         self.restoreState()
 
 
@@ -92,7 +98,7 @@ def _styles():
 
 
 def _section(title, ss):
-    t = Table([[Paragraph(title, ss["SecHead"])]], colWidths=[180 * mm])
+    t = Table([[Paragraph(title, ss["SecHead"])]], colWidths=[CONTENT_W])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), TEAL),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
@@ -102,7 +108,7 @@ def _section(title, ss):
     return t
 
 
-def _kv(rows, ss, widths=(45 * mm, 135 * mm)):
+def _kv(rows, ss, widths=(45 * mm, 125 * mm)):
     data = [[Paragraph(str(k), ss["SmallB"]), Paragraph(str(v), ss["Small"])] for k, v in rows]
     t = Table(data, colWidths=list(widths))
     t.setStyle(TableStyle([
@@ -154,13 +160,79 @@ def _sign_column(cells, ss):
     return t
 
 
+def _pemutus_label(note):
+    """Label 'jabatan & area' pemutus, mis. 'ACRM Banda Aceh'."""
+    role = (note.get("final_approver_role") or "").strip()
+    area = (note.get("final_approver_area") or "").strip()
+    if role and area:
+        return f"{role} {area}"
+    return role or area or ""
+
+
+def _disposisi_items(text):
+    """Pecah teks disposisi menjadi daftar item (mendukung baris baru atau penomoran)."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in text.split("\n") if p.strip()]
+    if len(parts) <= 1:
+        chunks = re.split(r"(?:^|\s)\d+[\.\)]\s+", text)
+        chunks = [c.strip() for c in chunks if c.strip()]
+        if len(chunks) > 1:
+            parts = chunks
+    cleaned = []
+    for p in parts:
+        p = re.sub(r"^\s*\d+[\.\)]\s*", "", p).strip()
+        if p:
+            cleaned.append(p)
+    return cleaned
+
+
+def _disp_column(items, ss):
+    """Kotak Disposisi terpisah, sejajar kolom pemutus (rata kiri, bernomor)."""
+    st_dt = ParagraphStyle("dpT", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, alignment=TA_CENTER, leading=11)
+    st_di = ParagraphStyle("dpI", fontName="Helvetica", fontSize=7.5, textColor=DARK, alignment=TA_LEFT, leading=11)
+    cells = [Paragraph("Disposisi", st_dt), Spacer(1, 3)]
+    for i, it in enumerate(items, 1):
+        cells.append(Paragraph(f"{i}. {it}", st_di))
+    t = Table([[c] for c in cells])
+    t.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return t
+
+
+def _approved_stamp(note, ss):
+    """Stempel APPROVED (dengan tanggal & jam) untuk diletakkan di bawah kolom tanda tangan."""
+    big = ParagraphStyle("stB", fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER, leading=20)
+    small = ParagraphStyle("stS", fontName="Helvetica", fontSize=9, textColor=colors.white, alignment=TA_CENTER, leading=12)
+    dt = f"{note.get('approved_date','')} {note.get('approved_time','')}".strip()
+    inner = Table([
+        [Paragraph("APPROVED", big)],
+        [Paragraph(f"Tanggal &amp; Jam Approved: {dt}", small)],
+    ], colWidths=[100 * mm])
+    inner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#10B981")),
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#059669")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    inner.hAlign = "CENTER"
+    return inner
+
+
 def _signatures(note, ss):
-    """Kolom tanda tangan basah/digital: Pengusul (I, II, III...) + Pemutus.
-    Disposisi pemutus diletakkan sejajar dalam kolom pemutus."""
+    """Kolom tanda tangan: Pengusul (I, II, ...) + Pemutus. Kotak Disposisi dibuat
+    terpisah sejajar di sebelah kolom pemutus. Stempel APPROVED di bawah kolom."""
     st_title = ParagraphStyle("sgT", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, alignment=TA_CENTER, leading=11)
     st_sub = ParagraphStyle("sgS", fontName="Helvetica", fontSize=7.5, textColor=DARK, alignment=TA_CENTER, leading=10)
     st_name = ParagraphStyle("sgN", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, alignment=TA_CENTER, leading=11)
-    st_disp = ParagraphStyle("sgD", fontName="Helvetica-Oblique", fontSize=7, textColor=DARK, alignment=TA_CENTER, leading=9)
 
     approvals = note.get("approvals", [])
     pengusul = [ap for ap in approvals if ap.get("fungsi") == "Pengusul"]
@@ -181,24 +253,22 @@ def _signatures(note, ss):
             Paragraph(f"NIP {p.get('nip') or ''}", st_sub),
         ], ss))
 
-    disposisi = (note.get("disposisi_pemutus") or "").strip()
-    pemutus_cells = [
+    # Kolom Pemutus (tanpa disposisi di dalamnya) — jabatan & area ditampilkan
+    columns.append(_sign_column([
         Paragraph("Pemutus", st_title),
-        Paragraph(note.get("final_approver_jabatan") or "", st_sub),
-    ]
-    if disposisi:
-        pemutus_cells.append(Paragraph(f"Disposisi: {disposisi}", st_disp))
-        pemutus_cells.append(Spacer(1, 14 * mm))
-    else:
-        pemutus_cells.append(Spacer(1, 22 * mm))
-    pemutus_cells += [
+        Paragraph(_pemutus_label(note) or note.get("final_approver_jabatan") or "", st_sub),
+        Spacer(1, 22 * mm),
         Paragraph(note.get("final_approver_nama") or "", st_name),
         Paragraph(f"NIP {note.get('final_approver_nip') or ''}", st_sub),
-    ]
-    columns.append(_sign_column(pemutus_cells, ss))
+    ], ss))
+
+    # Kotak Disposisi terpisah, sejajar dengan kolom pemutus
+    disp_items = _disposisi_items(note.get("disposisi_pemutus"))
+    if disp_items:
+        columns.append(_disp_column(disp_items, ss))
 
     total_cols = len(columns)
-    cw = (180 * mm) / total_cols
+    cw = CONTENT_W / total_cols
     grid = Table([columns], colWidths=[cw] * total_cols)
     grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -211,13 +281,15 @@ def _signatures(note, ss):
         _section("TANDA TANGAN PENGUSUL & PEMUTUS", ss),
         Spacer(1, 2),
         grid,
+        Spacer(1, 8),
+        _approved_stamp(note, ss),
     ])
 
 
 def generate_note_pdf(note: dict) -> bytes:
     ss = _styles()
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=18 * mm, leftMargin=15 * mm, rightMargin=15 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm)
     el = []
 
     _nomor = note.get("nomor_nota", "") or "-"
@@ -227,7 +299,7 @@ def generate_note_pdf(note: dict) -> bytes:
     head = Table([[
         Paragraph("RCG DIGITAL RESTRUCTURING<br/><font size=7 color='#F0B43C'>Solusi cerdas menuju pembiayaan berkelanjutan</font>", ParagraphStyle("hd", fontName="Helvetica-Bold", fontSize=12, textColor=TEAL, leading=15)),
         _logo_flowable(),
-    ]], colWidths=[110 * mm, 70 * mm])
+    ]], colWidths=[110 * mm, 60 * mm])
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -270,7 +342,7 @@ def generate_note_pdf(note: dict) -> bytes:
     el.append(_grid(
         ["Cabang", "CIF", "No Loan", "Kol", "Segmen/Produk", "Akad", "OS Pokok", "OS Margin", "Penalty", "Total"],
         fac_rows, ss,
-        [24 * mm, 14 * mm, 16 * mm, 8 * mm, 24 * mm, 16 * mm, 18 * mm, 18 * mm, 16 * mm, 18 * mm],
+        [23 * mm, 14 * mm, 16 * mm, 8 * mm, 23 * mm, 16 * mm, 18 * mm, 18 * mm, 16 * mm, 18 * mm],
     ))
     el.append(Spacer(1, 3))
     el.append(_kv([
@@ -298,7 +370,7 @@ def generate_note_pdf(note: dict) -> bytes:
     # RAC
     el.append(_section("RISK ACCEPTANCE CRITERIA (RAC)", ss))
     rrows = [[r.get("parameter", ""), r.get("status", ""), r.get("keterangan", "") or "-"] for r in note.get("rac", [])]
-    el.append(_grid(["Parameter", "Status", "Keterangan"], rrows, ss, [95 * mm, 30 * mm, 55 * mm]))
+    el.append(_grid(["Parameter", "Status", "Keterangan"], rrows, ss, [90 * mm, 30 * mm, 50 * mm]))
 
     if note.get("ra_required"):
         el.append(_section("RISK ASSESSMENT (FRA UNIT)", ss))
@@ -326,7 +398,7 @@ def generate_note_pdf(note: dict) -> bytes:
                       rp(p.get("os_pokok")), rp(p.get("os_margin")),
                       f"{p.get('tgl_mulai','')} s/d {p.get('tgl_akhir','')} ({p.get('durasi','')})"])
     el.append(_grid(["Jenis Fasilitas", "Akad", "Tujuan", "OS Pokok", "OS Margin", "Jangka Waktu"], prows, ss,
-                    [24 * mm, 20 * mm, 26 * mm, 24 * mm, 24 * mm, 42 * mm]))
+                    [24 * mm, 20 * mm, 30 * mm, 26 * mm, 26 * mm, 44 * mm]))
 
     # Syarat + lainnya
     el.append(_section("SYARAT-SYARAT PENANDATANGANAN AKAD", ss))
@@ -342,10 +414,8 @@ def generate_note_pdf(note: dict) -> bytes:
     for p in note.get("penutup", []):
         el.append(Paragraph(p, ss["Body2"]))
 
-    # Disposisi Pemutus
-    if note.get("disposisi_pemutus"):
-        el.append(_section("DISPOSISI PEMUTUS", ss))
-        el.append(Paragraph(note.get("disposisi_pemutus", ""), ss["Body2"]))
+    # Disposisi Pemutus kini ditampilkan sebagai kotak terpisah di sebelah kolom
+    # tanda tangan pemutus (lihat _signatures), tidak lagi sebagai section body.
 
     # Approval history
     el.append(_section("RIWAYAT PERSETUJUAN", ss))
@@ -354,27 +424,23 @@ def generate_note_pdf(note: dict) -> bytes:
         arows.append([f"{ap.get('nama','')} ({ap.get('role','')})", ap.get("jabatan", ""), ap.get("fungsi", ""),
                       ap.get("keputusan", ""), f"{ap.get('date','')} {ap.get('time','')}"])
     el.append(_grid(["User", "Jabatan", "Fungsi", "Keputusan", "Waktu"], arows, ss,
-                    [40 * mm, 45 * mm, 25 * mm, 30 * mm, 40 * mm]))
+                    [38 * mm, 42 * mm, 24 * mm, 26 * mm, 40 * mm]))
 
-    # Pengusul & Pemutus + Approved stamp (kept together)
-    stamp = Table([[Paragraph("<b>APPROVED</b>", ParagraphStyle("st", fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER)),
-                    Paragraph(f"Tanggal Approved: {note.get('approved_date','')}", ParagraphStyle("st2", fontName="Helvetica", fontSize=9, textColor=colors.white, alignment=TA_CENTER))]],
-                   colWidths=[90 * mm, 90 * mm])
-    stamp.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#10B981")), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    # Informasi Pengusul & Pemutus (stempel APPROVED dipindah ke bawah kolom tanda tangan)
+    _plabel = _pemutus_label(note)
+    _pemutus_txt = f"{note.get('final_approver_nama','')} - NIP {note.get('final_approver_nip','')}"
+    if _plabel:
+        _pemutus_txt += f" ({_plabel})"
     el.append(KeepTogether([
         _section("INFORMASI PENGUSUL & PEMUTUS", ss),
         _kv([
             ("Pengusul", f"{note.get('creator_nama','')} - NIP {note.get('creator_nip','')} ({note.get('dari','')})"),
-            ("Pemutus", f"{note.get('final_approver_nama','')} - NIP {note.get('final_approver_nip','')}"),
+            ("Pemutus", _pemutus_txt),
             ("Jabatan Pemutus", note.get("final_approver_jabatan", "")),
             ("Level Pemutus", note.get("final_approver_level", "")),
             ("Limit Pemutus Digunakan", rp(note.get("limit_pemutus_used"))),
             ("Tanggal & Jam Approved", f"{note.get('approved_date','')} {note.get('approved_time','')}"),
         ], ss),
-        Spacer(1, 6),
-        stamp,
-        Spacer(1, 4),
-        Paragraph(note.get("approved_keterangan", ""), ParagraphStyle("kt", fontName="Helvetica-Oblique", fontSize=8, textColor=colors.grey, alignment=TA_JUSTIFY)),
     ]))
 
     # Kolom tanda tangan basah/digital (Pengusul I/II/III + Pemutus) — hanya untuk nota approved
