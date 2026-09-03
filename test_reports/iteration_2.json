@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend-only re-test of the 3 fixes + regression sanity (as requested; backend pytest suite NOT re-run). VERIFIED FIXED: (1) Global period filter - admin login now shows filter-month='9' (September) and filter-year='2026' matching header 'Periode September 2026'; changing month to Agustus updates header to 'Periode Agustus 2026' (correct, no more corrupted '09-08') and re-queries the API (KPIs correctly go to Rp 0 / N/A because only 2026-09 is seeded); year change to 2025 on Target & Achievement re-queried and rendered 'periode 2025-09' with '-' values; reverting to September restores real data (Lending Rp 4,93 M / 86,5%, Funding Rp 9,38 M / 97,7%, NPF 2,7%, ranking Rizky 113,0% Excellent). (2) Collection activity submitted WITHOUT a photo now renders Validasi='Lokasi Tidak Tersedia' (was 'Valid'). (3) Token-protected /api/files/{path}?auth=<token> gallery images load - HTTP 200, img naturalWidth=600, watermark overlay visible. Regression: all 5 role logins redirect correctly (direktur->/executive with 6 charts + NPF score 111,9; admin->/admin; ao_lending->/dashboard 113,0% Excellent; ao_funding 115,0%; pic_remedial 117,6% + NPF page with 4 kol 3-5 accounts), leaderboard 3 tabs (4/4/2 rows), portfolio kolek 1-5 cards all populated. No JS console errors other than the expected 401 from GET /api/auth/me before login.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Header (all screens)", "issues": ["Month <select> is still visually truncated ('Septemb...') at 1920px - carried over from iteration_1, cosmetic only"]},
+      {"screen": "Collection Activity modal / Data Management import", "issues": ["Still uses native date/time and file inputs instead of shadcn components (carried over, cosmetic)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/mk_photo_activity.py", "/app/test_reports/cleanup_test_activities.py"],
+  "action_items": ["Optional cosmetic: widen the month select in Layout.jsx header so 'September' is not truncated", "Remaining open items from iteration_1 that were out of scope for this re-test: export/backup filename period suffix, seed idempotency for ADMIN_PASSWORD, splitting the 1000-line server.py into routers"],
+  "critical_code_review_comments": ["Layout.jsx now correctly does `const [py, pm] = (period || fallback).split('-')` - verified in code and in the browser.", "Collection.jsx fileUrl appends the JWT as a query param (?auth=<token>); functional, but tokens in URLs land in server/proxy access logs - consider a short-lived signed file token instead."],
+  "updated_files": [],
+  "success_rate": {"backend": "not re-run this iteration (frontend-only request)", "frontend": "100% (all 4 requested items pass)"},
+  "seed_data_creation": "Created TEST_NOPHOTO_002 (via UI, no photo) and TEST_PHOTO_GALLERY (via API with a synthetic JPEG) collection activities; both activities and the uploaded photo doc were deleted afterwards (collection_activity count back to 0).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "/app/memory/test_credentials.md - all used credentials work (admin@hajimiskin.co.id/Admin12345, hendri.kamal@hajimiskin.co.id/Direktur123, rizky.lending|budi.funding|hendra.remedial@hajimiskin.co.id/Password123).",
+  "context_for_next_testing_agent": "All three iteration_1 fixes are confirmed in the browser. Only 2026-09 has seeded targets/achievements/portfolio, so any other period legitimately shows Rp 0 / N/A - do not report that as a bug. Collection activity table is now empty (test rows cleaned up); recreate a row with /app/test_reports/mk_photo_activity.py if you need to re-test the gallery. Still untested overall: POST /api/restore/confirm (destructive), /api/import/confirm actual insert, HEIC/EXIF-GPS photos, session-timeout expiry, 15-min lockout auto-unlock.",
+  "rca_of_the_issue": "N/A - previous CRITICAL (reversed period destructuring in Layout.jsx) is resolved; month/year selects now hydrate from and write back the 'YYYY-MM' period correctly."
+}

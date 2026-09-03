@@ -1,0 +1,60 @@
+{
+  "summary": "Full backend + frontend E2E testing of AO-360. Backend: 45 pytest cases across health, auth (JWT/bearer+httpOnly cookie, generic error, bcrypt $2b$ hash), account lockout (5 fails -> HTTP 423 + audit), RBAC for all 5 roles, dashboard/me, executive dashboard (NPF 2.68% Sehat, score 111.9), ranking + tie-breaker + N/A at bottom, divide-by-zero N/A rules (both NA and NA_NO_TARGET), targets/achievements upsert, performance-setting weight validation + versioning, user management (temp password, force reset, reset-password, change-role history, activate/deactivate/delete), collection activity multipart upload with watermark + GPS fallback + admin review, import preview, all 4 XLSX exports, backup without password_hash. Result: 45/45 passed. Frontend: login page, wrong-password error, all 5 role logins/redirects/menus, executive KPI+charts, leaderboard 3 tabs, AO dashboard (113% Excellent), portfolio + kolek 1-5 cards, collection modal (GPS status, submit, list), users CRUD via UI, data mgmt export/backup downloads, audit search, NPF page, targets edit modal, force-change-password flow + logout. One CRITICAL frontend bug found in the global period filter.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/collection-activities", "issue": "Activity is accepted with ZERO photos and is stored with status_validasi='Valid' even though no photo/GPS exists (overall_validation defaults to 'Valid' when files list is empty). Spec requires photo documentation; should require >=1 photo or mark 'Lokasi Tidak Tersedia'."},
+      {"endpoint": "GET /api/files/{path}", "issue": "Completely unauthenticated - any collection photo (customer name/watermark/GPS) is downloadable by URL without a token. The 'auth'/'authorization' params are declared but never validated."},
+      {"endpoint": "POST /api/import/confirm", "issue": "Only data_type='portfolio' is implemented; any other data_type silently increments 'failed' for every row instead of returning 400 with a clear message."},
+      {"endpoint": "GET /api/npf, GET /api/dashboard/executive", "issue": "target_npf_ratio is taken from an arbitrary targets doc via find_one({'target_npf_ratio': {'$gt':0}}) with no sort/ao filter -> non-deterministic when remedial AOs have different NPF targets."},
+      {"endpoint": "GET /api/npf, GET /api/portfolio/summary", "issue": "Open to every authenticated role (e.g. ao_funding) - branch-wide NPF/portfolio totals are visible outside the intended roles."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Layout.jsx (global period filter)", "issue": "CRITICAL: period string destructured in the wrong order - `const [pm, py] = (period || ...).split('-')` gives pm='2026' (year) and py='09' (month). Consequences: (1) month dropdown always renders 'Januari' regardless of the active period (verified: select.value='1', selectedIndex=0 while header subtitle says 'September 2026'); (2) year dropdown value is invalid and silently falls back to the first option; (3) picking any month/year writes a corrupted period (e.g. '09-08' -> subtitle 'Periode Agustus 09'), after which every dashboard/leaderboard/target query returns empty data (Admin dashboard showed 'Realisasi Lending Rp 0 / Ach N/A'). Fix: `const [py, pm] = (period || fallback).split('-')`.", "selector": "[data-testid=\"filter-month\"], [data-testid=\"filter-year\"]", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Data Management export/backup", "issue": "Downloaded files are named 'achievement.xlsx' / 'ao360_backup.json' - the period suffix the backend sets in Content-Disposition is overridden by the frontend, so exports for different periods overwrite each other.", "affected_selectors": ["[data-testid=\"export-achievement\"]", "[data-testid=\"backup-btn\"]"]},
+      {"flow": "Collection activity create (no photo)", "issue": "Submitting the modal without a photo succeeds and the row shows Validasi='Valid' while Lokasi column shows 'Lokasi tidak tersedia' - contradictory state shown to the user (root cause is the backend default above).", "affected_selectors": ["[data-testid=\"act-submit\"]", "[data-testid^=\"activity-row-\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Collection Activity modal", "issues": ["Uses native browser date/time pickers (<input type=date/time>) instead of the shadcn calendar component", "Photo picker input is a hidden native input styled as a label - works, but has no selected-file count/preview feedback before submit"]},
+      {"screen": "Data Management > Import", "issues": ["Raw unstyled native 'Choose File' control breaks the visual language of the rest of the app"]},
+      {"screen": "Header (all screens)", "issues": ["Month select is visually truncated ('Septemb...') at 1920px width"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: fix reversed period destructuring in /app/frontend/src/components/Layout.jsx (line ~57) -> `const [py, pm] = (period || fallback).split('-')`; then re-verify month/year filter drives dashboards correctly",
+    "Require at least 1 photo for collection activities (or set status_validasi to 'Lokasi Tidak Tersedia' when there are no photos/GPS) in POST /api/collection-activities",
+    "Protect GET /api/files/{path} with token validation (query param or Authorization header) so customer photos are not publicly downloadable",
+    "CORS: allow_origins=['*'] together with allow_credentials=True is invalid per the CORS spec - browsers will refuse credentialed (cookie) requests. Use explicit origins from env",
+    "seed.run() returns early when any user exists, so changing ADMIN_PASSWORD never updates the existing admin - make admin seeding idempotent (upsert password if changed)",
+    "Return 400 from /api/import/confirm for unsupported data_type instead of counting all rows as failed",
+    "Keep the period suffix in export/backup download filenames"
+  ],
+  "critical_code_review_comments": [
+    "Layout.jsx: `const [pm, py] = period.split('-')` swaps month/year - single-line bug that breaks the entire period filtering feature (highest priority).",
+    "server.py is 1001 lines and mixes auth, RBAC, dashboards, files, import/export and backup - split into routers (auth, users, dashboard, portfolio, collection, data_mgmt) before Phase II.",
+    "/api/files/{path} declares `auth`/`authorization` params but never uses them -> unauthenticated object access to watermarked customer photos.",
+    "/api/restore/confirm does delete_many({}) on 11 collections including users before insert_many; the advertised 'auto-backup before restore' only writes an audit log, so a malformed payload is unrecoverable. (Not executed during testing to avoid wiping demo data.)",
+    "seed.py guards on users.count_documents({}) > 0, so demo targets/achievements/portfolio can never be re-seeded or migrated; admin credentials from env are ignored after first boot.",
+    "hitung_npf/hitung_achievement correctly return None for divide-by-zero and the ranking helper places N/A rows last with rank=null - verified, no changes needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py"
+  ],
+  "success_rate": {"backend": "100% (45/45 pytest cases)", "frontend": "90% (all flows work except the global period filter, which is broken)"},
+  "seed_data_creation": "Created and then deleted throwaway users (test_dbz_*, test_dbz2_*, test_tgt_*, test_um_*, test_lock_*, test_fpc_*, TEST UI User) plus TEST_KONTRAK_*/TEST_UI_001 collection activities and their photos (removed from collection_activity/collection_activity_photos). Weight settings for ao_lending were changed to 80/20 during versioning tests and reverted to the default 70/30 (extra versions v2-v5 remain in performance_settings history by design).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md is present and all listed credentials work (admin@hajimiskin.co.id/Admin12345, hendri.kamal@hajimiskin.co.id/Direktur123, *.lending|funding|remedial@hajimiskin.co.id/Password123). Lockout test used a throwaway account, so no demo account is locked.",
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/backend_test.py -q --junitxml=/app/test_reports/pytest/pytest_results.xml` (45 cases, ~25s, uses REACT_APP_BACKEND_URL from /app/frontend/.env). Not yet tested: POST /api/restore/confirm (destructive - it wipes all 11 collections; test only with a full backup payload and be ready to re-seed), POST /api/import/confirm actual insert (only preview was tested), HEIC upload + real EXIF-GPS photos (synthetic JPEGs have no EXIF so status_validasi='Lokasi Tidak Tersedia' path was covered), session-timeout expiry, and the 15-min lockout auto-unlock. Frontend: after the Layout period-filter fix, re-verify that changing month/year re-queries dashboards, leaderboard, targets and NPF with the new period.",
+  "rca_of_the_issue": "Period filter: Layout.jsx computes `const [pm, py] = (period || `${year}-${month}`).split('-')`. Since period is stored as 'YYYY-MM', pm receives the year and py the month. The month <select value={parseInt(pm)}> therefore gets 2026, which matches no <option> (1-12), so the browser falls back to index 0 ('Januari'); the year <select value=py> gets '09', which matches none of [2026,2025,2024] and falls back to 2026 by coincidence. On change, setP(m, y) builds `${py}-${pad(m)}` = '09-08', an invalid period that the backend has no data for, so all achievement/ranking widgets render Rp 0 / N/A. Reproduction: login as any role -> header month dropdown reads 'Januari' while the subtitle reads 'Periode September 2026' -> select 'Agustus' -> subtitle becomes 'Periode Agustus 09' and KPI cards go to Rp 0 / Ach N/A. Mitigation: swap the destructuring to `const [py, pm] = ...`."
+}

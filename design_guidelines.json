@@ -1,0 +1,158 @@
+{
+  "project_name": "AO-360 — AO Achievement Dashboard (PT BPRS Haji Miskin)",
+  "app_type": "dashboard",
+  "target_audience": "Bank Executives (Director Hendri Kamal), System Administrators, AO Lending Officers, AO Funding Officers, and PIC Remedial Officers at PT BPRS Haji Miskin.",
+  "archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST (Sharia Banking Authority & Precision)",
+  "instructions_to_main_agent": [
+    "Build a modern, clean, high-density internal banking performance management app for PT BPRS Haji Miskin.",
+    "Ensure complete coverage of all 5 role views: Executive Dashboard (Director Hendri Kamal), Admin Dashboard, AO Lending Dashboard, AO Funding Dashboard, and Remedial Dashboard.",
+    "Implement the custom BPRS Haji Miskin logo badge with Islamic geometry/calligraphy styling in Emerald Green and Gold on login and navigation header.",
+    "All numerical amounts must be properly formatted in Indonesian Rupiah (e.g., Rp 1.250.000.000 or Rp 1,25 M).",
+    "Use strict cardless / subtle rounded borders (max rounded-lg) with clear slate divides instead of heavy drop shadows or excessive animations.",
+    "Include a functional role switcher in the header/login for easy evaluation of all dashboards.",
+    "Collection activity flow MUST feature photo upload simulation with real-time GPS location watermark preview, timestamp, and map coordinate link.",
+    "All interactive and metric elements MUST include explicit data-testid attributes (e.g., data-testid='kpi-card-total-disbursement')."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Avoid generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy and crisp 1px borders (border-slate-200 / border-slate-700).",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) for sticky headers and floating contextual filter bars.",
+    "MUST NOT apply universal transition (transition: all). Always add specific transitions for hover/focus (e.g., transition-colors duration-150).",
+    "MUST NOT center align the app container (.App { text-align: center; }). Keep strict left-aligned reading rhythm.",
+    "Never use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 for system icons. Use Lucide React icons (@lucide/react or lucide-react).",
+    "Every interaction needs clean feedback - subtle hover highlights, state badges, and instant table filtering.",
+    "All key interactive elements and data cards MUST have data-testid attributes in kebab-case."
+  ],
+  "colors": {
+    "primary": {
+      "emerald_900": "#064E3B",
+      "emerald_800": "#065F46",
+      "emerald_700": "#047857",
+      "emerald_600": "#059669",
+      "emerald_500": "#10B981",
+      "emerald_50": "#ECFDF5"
+    },
+    "secondary": {
+      "white": "#FFFFFF",
+      "slate_50": "#F8FAFC",
+      "slate_100": "#F1F5F9",
+      "slate_200": "#E2E8F0"
+    },
+    "accent_gold": {
+      "gold_800": "#92400E",
+      "gold_700": "#B45309",
+      "gold_600": "#D97706",
+      "gold_500": "#F59E0B",
+      "gold_100": "#FEF3C7"
+    },
+    "neutral_slate": {
+      "slate_900": "#0F172A",
+      "slate_800": "#1E293B",
+      "slate_700": "#334155",
+      "slate_600": "#475569",
+      "slate_500": "#64748B",
+      "slate_400": "#94A3B8"
+    },
+    "sharia_kolektibilitas": {
+      "kolek_1_lancar": { "hex": "#059669", "label": "Kolek 1 - Lancar", "bg": "#ECFDF5", "border": "#A7F3D0" },
+      "kolek_2_dpk": { "hex": "#D97706", "label": "Kolek 2 - Dalam Perhatian Khusus", "bg": "#FEF3C7", "border": "#FDE68A" },
+      "kolek_3_kurang_lancar": { "hex": "#EA580C", "label": "Kolek 3 - Kurang Lancar", "bg": "#FFEDD5", "border": "#FED7AA" },
+      "kolek_4_diragukan": { "hex": "#DC2626", "label": "Kolek 4 - Diragukan", "bg": "#FEE2E2", "border": "#FECACA" },
+      "kolek_5_macet": { "hex": "#991B1B", "label": "Kolek 5 - Macet", "bg": "#FEF2F2", "border": "#FCA5A5" }
+    }
+  },
+  "typography": {
+    "font_family_heading": "Plus Jakarta Sans, Manrope, sans-serif",
+    "font_family_body": "Inter, DM Sans, sans-serif",
+    "font_family_numeric": "JetBrains Mono, ui-monospace, monospace",
+    "hierarchy": {
+      "h1_dashboard_title": "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900",
+      "h2_section_title": "text-lg sm:text-xl font-semibold text-slate-900",
+      "h3_card_title": "text-sm font-medium text-slate-500 uppercase tracking-wider",
+      "kpi_value": "text-2xl sm:text-3xl font-bold text-slate-900 font-mono tracking-tight",
+      "body_text": "text-sm text-slate-700 leading-normal",
+      "caption_text": "text-xs text-slate-500"
+    }
+  },
+  "grids_and_layouts": {
+    "dashboard_container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6",
+    "kpi_grid": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6",
+    "analytics_grid": "grid grid-cols-1 lg:grid-cols-12 gap-6",
+    "bento_ratios": {
+      "main_chart": "col-span-12 lg:col-span-8",
+      "side_widget": "col-span-12 lg:col-span-4",
+      "full_table": "col-span-12"
+    },
+    "card_style": "bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow transition-shadow p-5"
+  },
+  "components_and_features": [
+    {
+      "name": "Header & Executive Topbar",
+      "path": "src/components/Header.jsx",
+      "description": "Displays PT BPRS Haji Miskin logo, active role selector (Executive, Admin, AO Lending, AO Funding, Remedial), Period Filter (MTD/YTD, Month/Year), and user profile badge for Director Hendri Kamal."
+    },
+    {
+      "name": "Executive Dashboard View",
+      "path": "src/components/ExecutiveDashboard.jsx",
+      "description": "Executive summary for Director Hendri Kamal: Total Financing Portfolio, NPF Net (1.82%), NPF Bruto (2.45%), Total DPK, Overall KPI Target vs Actual gauge, and Top AO Rankings."
+    },
+    {
+      "name": "AO Lending Dashboard",
+      "path": "src/components/AOLendingDashboard.jsx",
+      "description": "Pencapaian Pencairan (Disbursement), Target vs Actual bar chart, Portfolio Kolektibilitas 1-5 pie chart, Performance Score gauge (Weighted target metrics), and Nasabah list."
+    },
+    {
+      "name": "AO Funding Dashboard",
+      "path": "src/components/AOFundingDashboard.jsx",
+      "description": "Tabungan & Deposito Sharia growth, Deposit NOA, Target vs Realisasi DPK, and Top Depositor accounts."
+    },
+    {
+      "name": "Remedial & Collection Dashboard",
+      "path": "src/components/RemedialDashboard.jsx",
+      "description": "Recovery Write-Off (WO), Restrukturisasi Pembiayaan, Kolek 3-5 action queue, and Collection Activity Log."
+    },
+    {
+      "name": "Collection Activity Documentation Modal",
+      "path": "src/components/CollectionModal.jsx",
+      "description": "Field Officer photo capture / upload simulation with auto-generated GPS watermark (Latitude, Longitude, Address, Timestamp), result note, and status update."
+    },
+    {
+      "name": "Admin Management Console",
+      "path": "src/components/AdminConsole.jsx",
+      "description": "User Account Management, Target & Weight Setting (Bobot KPI), Excel Data Import/Export preview, System Backup & Restore simulation, Audit Logs."
+    },
+    {
+      "name": "Portfolio Data Table with Filters",
+      "path": "src/components/PortfolioTable.jsx",
+      "description": "High density table showing Account Number, Customer Name, Akad (Murabahah, Musyarakah, Mudharabah), Plafon, Baki Debet, Kolektibilitas status badge, AO Name, and action buttons."
+    }
+  ],
+  "image_urls": [
+    {
+      "category": "Executive Director Avatar",
+      "url": "https://images.unsplash.com/photo-1742981365880-698cfb84492d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHw0fHxiYW5rJTIwZGlyZWN0b3IlMjBvZmZpY2UlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODg0MzM5NTR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Director HENDRI KAMAL official profile avatar"
+    },
+    {
+      "category": "Bank HQ Building Banner",
+      "url": "https://images.unsplash.com/photo-1768270181430-3e3672a32283?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBiYW5raW5nJTIwb2ZmaWNlJTIwaW50ZXJpb3J8ZW58MHx8fHwxNzg4NDMzOTU0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "PT BPRS Haji Miskin Headquarters Lobby Interior"
+    },
+    {
+      "category": "Field AO Officer Activity",
+      "url": "https://images.unsplash.com/photo-1665046120661-15cecf80f9cb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxmaWVsZCUyMG9mZmljZXIlMjB0YWJsZXQlMjBzbWFydHBob25lJTIwd29ya3xlbnwwfHx8Z3JlZW58MTc4ODQzMzk0N3ww&ixlib=rb-4.1.0&q=85",
+      "description": "AO Collection Field Visit Documentation sample photo"
+    },
+    {
+      "category": "BPRS Bank Team",
+      "url": "https://images.unsplash.com/photo-1709377699246-aa4c66caddfa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHw0fHxpbmRvbmVzaWElMjBmaW5hbmNlJTIwYnVzaW5lc3MlMjB0ZWFtfGVufDB8fHx8MTc4ODQzMzk1NHww&ixlib=rb-4.1.0&q=85",
+      "description": "Account Officers and Operational Team at PT BPRS Haji Miskin"
+    }
+  ],
+  "accessibility": {
+    "contrast_ratio": "Minimum 4.5:1 for standard text, 3:1 for large numeric KPIs.",
+    "focus_states": "ring-2 ring-emerald-600 ring-offset-2 outline-none for interactive controls.",
+    "testing_attributes": "Add data-testid to every filter dropdown, table row, tab button, search input, and export button."
+  }
+}
